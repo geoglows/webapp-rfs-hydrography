@@ -9,28 +9,37 @@
  * app's own artifacts rather than published v3 products. They still hang off
  * `urls.hydrographyGroup()`, so the shared builder remains the single source of the base path.
  *
- * Resolution order for the root: `?base=` on the URL, then VITE_V3_BASE at build time, then `data/`
- * relative to the page. The fallback resolves against document.baseURI rather than a literal path,
- * so one bundle works at the domain root, at /rfs-hydrography-explorer/, and under a PORTAL_BASE
- * prefix without being rebuilt. Leaving all three unset falls through to rfsjs's own default.
+ * Resolution order for the root: `?base=` on the URL, then VITE_V3_BASE at build time, then
+ * rfsjs's own default — the published v3 root, which is where a deployed copy of this app should
+ * be reading from. Both overrides may be relative (`data`, `../shared-data`); they resolve against
+ * document.baseURI rather than a literal path, so one bundle works at the domain root, at
+ * /rfs-hydrography-explorer/, and under a PORTAL_BASE prefix without being rebuilt.
+ *
+ * There is deliberately no relative `data/` fallback here. Serving the artifacts next to the
+ * bundle is a dev-server arrangement (see vite.config.js), not how the app is deployed: the portal
+ * copies only dist/ to the CDN, so a built-in `data/` default silently points a production build
+ * at a prefix that does not exist and every read comes back 403. `data` is set as the default for
+ * dev in .env.development, where it is true, and nowhere else.
  */
 import {configure, getConfig, urls} from 'rfsjs/v3';
 
 const params = new URLSearchParams(window.location.search);
 
+const absolute = value => (/^[a-z][a-z0-9+.-]*:/i.test(value)
+  ? value
+  : new URL(value, document.baseURI).href);
+
 const resolveBase = () => {
   const fromUrl = params.get('base');
-  if (fromUrl) return fromUrl;
+  if (fromUrl) return absolute(fromUrl);
   const configured = import.meta.env.VITE_V3_BASE;
-  if (configured) {
-    return /^[a-z][a-z0-9+.-]*:/i.test(configured)
-      ? configured
-      : new URL(configured, document.baseURI).href;
-  }
-  return new URL('data', document.baseURI).href;
+  return configured ? absolute(configured) : undefined;
 };
 
-configure({v3Base: resolveBase()});
+// Leaving v3Base unset keeps rfsjs's default; passing undefined to configure() would too, but not
+// calling it at all is the clearer statement of "this app has nothing to say about the root".
+const resolved = resolveBase();
+if (resolved) configure({v3Base: resolved});
 
 export const V3_BASE = getConfig().v3Base;
 
