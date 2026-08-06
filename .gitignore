@@ -1,0 +1,8 @@
+node_modules
+dist
+_site
+data
+.DS_Store
+*.png
+.idea/
+data/

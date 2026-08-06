@@ -1,0 +1,109 @@
+/* The panel stays dark over a light basemap: dark cards floating on Carto Positron keep the map
+   itself the brightest thing on screen, which is the point of a light basemap.
+
+   The four map colours are therefore picked to work against BOTH — a light grey map and a dark
+   navy panel — because the legend swatches sit on the panel and have to be the same colour as the
+   lines they describe. That rules out the pale blues and lilacs a dark-only map would use: they
+   disappear on Positron. These are the saturated mid-tones that survive both backgrounds. */
+:root {
+  --bg:#0a0e17; --surface:#111827; --surface2:#1e293b; --border:#334155;
+  --text:#e2e8f0; --text-dim:#94a3b8; --accent:#38bdf8; --accent-dim:#0ea5e9;
+  --stream:#2a7fd4; --selected:#e0417a; --upstream:#f06a1e; --group:#8b5cf6;
+  --success:#10b981; --danger:#ef4444;
+  --radius:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Sans 3',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh;width:100vw}
+#map{position:absolute;inset:0;z-index:0}
+#sidebar{position:absolute;top:16px;left:16px;z-index:10;width:352px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  display:flex;flex-direction:column;max-height:calc(100vh - 32px);
+  box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden}
+#sidebar header{padding:14px 20px;border-bottom:1px solid var(--border);background:var(--surface2)}
+#sidebar header h1{font-size:14px;font-weight:700;letter-spacing:.5px;color:var(--accent);font-family:'JetBrains Mono',monospace}
+#sidebar header p{font-size:12px;color:var(--text-dim);margin-top:4px;line-height:1.5}
+#controls{padding:14px 20px;flex-shrink:0}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;font-family:'JetBrains Mono',monospace}
+.field input{width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px}
+.field input:focus{outline:none;border-color:var(--accent)}
+.field input::placeholder{color:#475569}
+.btn-row{display:flex;gap:8px;margin-top:12px}
+button{flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+#btn-download{background:var(--accent-dim);color:#000;border-color:var(--accent)}
+#btn-download:hover:not(:disabled){background:var(--accent)}
+button:disabled{opacity:.4;cursor:not-allowed;background:var(--surface2);color:var(--text-dim);border-color:var(--border)}
+#btn-copy,#btn-geoparquet{background:var(--surface2);color:var(--text-dim)}
+#btn-copy:hover:not(:disabled),#btn-geoparquet:hover:not(:disabled){color:var(--text);border-color:var(--text-dim)}
+#btn-clear{background:var(--surface2);color:var(--text-dim);flex:0 0 auto;width:72px}
+#btn-clear:hover{color:var(--text);border-color:var(--text-dim)}
+
+/* ── the selection box ─────────────────────────────────────────────────────
+   What the old running log was mostly used to find out: how many reaches, and which. The id
+   preview scrolls on its own so a large selection cannot push the progress block off screen. */
+#selection-info{padding:12px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;line-height:1.7;display:none}
+#selection-info .count{color:var(--upstream);font-weight:600;font-size:18px}
+#selection-info .outlet{color:var(--selected);font-weight:600}
+#selection-info .group{color:var(--group);font-weight:600}
+#selection-info .k{color:#64748b}
+/* word-break stays normal: the ids are space-separated, and break-all splits a riverId across two
+   lines, which makes the preview unreadable at exactly the moment it is being used to check one. */
+#selection-info .ids{margin-top:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--radius);font-size:11px;line-height:1.6;color:var(--text-dim);
+  max-height:96px;overflow-y:auto;word-break:normal;overflow-wrap:normal}
+#selection-info .ids .more{color:#64748b;display:block;margin-top:4px}
+
+/* ── the download progress block ───────────────────────────────────────────
+   Phase and percentage on one line, the bar under it, bytes/rate/eta under that. Hidden entirely
+   when nothing is running, so the panel is not carrying a dead 0% bar. */
+#progress{display:none;padding:10px 20px 12px;border-top:1px solid var(--border);flex-shrink:0}
+#progress-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;margin-bottom:6px}
+#progress-phase{color:var(--text);font-weight:600;letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#progress-pct{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+#progress-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
+#progress-fill{height:100%;width:0%;border-radius:3px;
+  background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .18s linear}
+#progress-detail{margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;
+  color:#64748b;line-height:1.5;font-variant-numeric:tabular-nums}
+#progress.done #progress-fill{background:linear-gradient(90deg,var(--success),#34d399)}
+#progress.done #progress-pct{color:var(--success)}
+
+/* Indeterminate: one synchronous call that has either returned or not. A stripe that is honestly
+   "still working" beats a percentage invented to keep the bar moving. */
+#progress.indeterminate #progress-fill{width:100%;transition:none;
+  background:repeating-linear-gradient(115deg,var(--accent-dim) 0 12px,var(--surface2) 12px 24px);
+  background-size:200% 100%;animation:progress-stripe 1s linear infinite}
+@keyframes progress-stripe{from{background-position:0 0}to{background-position:-48px 0}}
+@media (prefers-reduced-motion:reduce){
+  #progress.indeterminate #progress-fill{animation:none;opacity:.6}
+  #progress-fill{transition:none}
+}
+
+/* ── the one status line ───────────────────────────────────────────────────
+   Overwritten, never appended to. */
+#status{display:none;padding:9px 20px 11px;border-top:1px solid var(--border);
+  font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:var(--text-dim);
+  word-break:break-word}
+#status.info{color:var(--accent)}
+#status.success{color:var(--success)}
+#status.error{color:#fca5a5;background:rgba(239,68,68,.09);border-top-color:rgba(239,68,68,.35)}
+
+#panel-right{position:absolute;top:16px;right:16px;z-index:10;width:230px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:0 8px 32px rgba(0,0,0,.5);padding:12px 16px}
+.card h2{font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;font-family:'JetBrains Mono',monospace}
+.legend-item{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12px;color:var(--text-dim)}
+.legend-item:last-child{margin-bottom:0}
+.swatch{width:20px;height:3px;border-radius:2px;flex-shrink:0}
+.swatch.stream{background:var(--stream)}
+.swatch.upstream{background:var(--upstream)}
+.swatch.outlet{background:var(--selected)}
+.swatch.poly{height:12px;border-radius:2px;border:1px dashed var(--group);background:rgba(139,92,246,.18)}
+.legend-item input[type=checkbox]{width:14px;height:14px;cursor:pointer;accent-color:var(--accent)}
+.legend-item label{cursor:pointer;flex:1}
+#group-readout{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:var(--text-dim)}
+#group-readout .id{color:var(--group);font-weight:600;font-size:13px}
+#group-readout .file{color:var(--text);word-break:break-all;display:block;margin-top:4px}
+#group-readout .hint{color:#64748b}
+#group-readout .loaded{color:var(--success)}

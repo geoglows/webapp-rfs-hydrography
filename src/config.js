@@ -1,0 +1,86 @@
+/**
+ * Where the v3 hydrography lives, and the two limits the app enforces.
+ *
+ * The bucket layout is rfsjs's to know, not this app's: `configure({v3Base})` points the package at
+ * a root and `urls.*` builds the paths, so this app never spells out `hydrography/group=N` itself
+ * and cannot drift from the rest of the RFS clients if the layout moves.
+ *
+ * The placeholder Group boundaries and the Group index have no rfsjs builder because they are this
+ * app's own artifacts rather than published v3 products. They still hang off
+ * `urls.hydrographyGroup()`, so the shared builder remains the single source of the base path.
+ *
+ * Resolution order for the root: `?base=` on the URL, then VITE_V3_BASE at build time, then `data/`
+ * relative to the page. The fallback resolves against document.baseURI rather than a literal path,
+ * so one bundle works at the domain root, at /rfs-hydrography-explorer/, and under a PORTAL_BASE
+ * prefix without being rebuilt. Leaving all three unset falls through to rfsjs's own default.
+ */
+import {configure, getConfig, urls} from 'rfsjs/v3';
+
+const params = new URLSearchParams(window.location.search);
+
+const resolveBase = () => {
+  const fromUrl = params.get('base');
+  if (fromUrl) return fromUrl;
+  const configured = import.meta.env.VITE_V3_BASE;
+  if (configured) {
+    return /^[a-z][a-z0-9+.-]*:/i.test(configured)
+      ? configured
+      : new URL(configured, document.baseURI).href;
+  }
+  return new URL('data', document.baseURI).href;
+};
+
+configure({v3Base: resolveBase()});
+
+export const V3_BASE = getConfig().v3Base;
+
+const group = g => urls.hydrographyGroup({group: g});
+
+/**
+ * Which per-Group geometry file the GeoParquet export reads.
+ *
+ * Both hold the same reaches — same count, same riverIds, same order, same columns — and differ
+ * only in how the lines are stored:
+ *
+ *   'mapping'  streams_mapping_<id>.geo.parquet  EPSG:3857, coordinates snapped to whole metres,
+ *              half the vertices (measured on Group 103: 11.2M against 22.5M), 46 MB against 72 MB.
+ *   'full'     streams_<id>.geo.parquet          EPSG:4326, every vertex the pipeline published.
+ *
+ * 'mapping' is the default: it is a third fewer bytes to fetch and its shapes are indistinguishable
+ * on a screen. It is a generalisation, though — a reach's length measured off it is not the
+ * pipeline's length — so switch to 'full' if the export is meant to be authoritative geometry
+ * rather than something to draw.
+ *
+ * Either way the CRS travels with the file. The worker copies the source's GeoParquet `geo`
+ * metadata, PROJJSON and all, into what it writes, so GDAL and GeoPandas read the result in the
+ * CRS it is actually in and reproject it themselves if asked. Nothing downstream assumes degrees.
+ */
+export const GEOMETRY_SOURCE = 'mapping';
+
+const streamsFile = g => (GEOMETRY_SOURCE === 'mapping'
+  ? `streams_mapping_${g}.geo.parquet`
+  : `streams_${g}.geo.parquet`);
+
+export const URLS = {
+  streamsPmtiles: urls.streamsPmtiles(),
+  groupBoundaries: `${group(0)}/group_boundaries.geojson`,
+  groupIndex: `${group(0)}/group_index.json`,
+  metadata: g => `${group(g)}/metadata_${g}.parquet`,
+  streams: g => `${group(g)}/${streamsFile(g)}`,
+};
+
+/** A reach highlighted through feature-state costs one setFeatureState call. Past this the map is
+ * left showing only the outlet and the count; the subset and both exports are unaffected. */
+export const MAX_HIGHLIGHT = 400000;
+
+/** Full-precision geometry runs ~5.6 KB of WKB per reach, held in memory twice — once decoded,
+ * once in the file being written. The work happens in a worker so the map stays live through it,
+ * but the tab's memory is still the ceiling. The ID list export has no such limit. */
+export const MAX_GEOMETRY_REACHES = 100000;
+
+/** The v3 tiles carry strahlerOrder >= 2 only from z9 up, so below this a reach can be in the
+ * subset and absent from the map. The trace reads the metadata table, not tiles, so the count is right
+ * either way — only the highlight looks sparse. */
+export const FULL_DETAIL_ZOOM = 9;
+
+export const DEEP_LINK_RIVER = params.get('river');

@@ -1,0 +1,26 @@
+{
+  "name": "rfs-hydrography-explorer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node tests/explorer.test.mjs"
+  },
+  "dependencies": {
+    "hyparquet": "^1.27.1",
+    "hyparquet-compressors": "^1.1.1",
+    "hyparquet-writer": "^0.16.5",
+    "maplibre-gl": "^4.7.1",
+    "pmtiles": "^4.0.1",
+    "rfsjs": "file:../rfsjs"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "playwright": "^1.62.1",
+    "sirv": "^3.0.2",
+    "vite": "^8.1.5"
+  }
+}
