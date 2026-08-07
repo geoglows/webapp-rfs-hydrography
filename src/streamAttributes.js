@@ -1,0 +1,147 @@
+/**
+ * What the stream tiles actually carry — read from the archive, not written down here.
+ *
+ * A PMTiles archive keeps a TileJSON-ish metadata blob: `vector_layers[].fields` names every
+ * attribute and its type, and tippecanoe's `tilestats` adds the range each one was seen over and,
+ * for strings, the distinct values. That is exactly the menu the style panel needs — attribute,
+ * type, and the numbers a sensible threshold sits between — so the panel asks the data rather than
+ * carrying a copy of the schema that goes stale the next time the tiles are rebuilt.
+ *
+ * It costs one range read of a few KB, and it shares the header and directory cache with the
+ * protocol the map already renders through (see map.js), so nothing is fetched twice.
+ *
+ * The table below is presentation only: a label, a unit, and which of three kinds an attribute is.
+ * Anything not in it still appears — with its raw name and whatever tilestats knows — because the
+ * point of reading the archive is that a field added upstream shows up here without a code change.
+ */
+import {firstZoomForOrder, TILE_ORDER_LADDER} from './config.js';
+
+export const SOURCE_LAYER = 'streams';
+
+/**
+ * `measure` is what you style by, `category` is what you filter by, `identity` names one reach and
+ * is nearly always the wrong thing to draw with. The panel orders the menu that way, so the first
+ * thing on screen is the attribute someone actually wants.
+ */
+const KNOWN = {
+  strahlerOrder: {
+    label: 'Strahler order', role: 'measure',
+    note: `tiles carry order >= ${TILE_ORDER_LADDER[0].minOrder} below z${TILE_ORDER_LADDER[1].zoom}` +
+      TILE_ORDER_LADDER.slice(1).map(s => `, >= ${s.minOrder} from z${s.zoom}`).join('') +
+      '; order 1 is in no tile',
+  },
+  shreveOrder: {label: 'Shreve order', role: 'measure', note: 'upstream link count — magnitude, not rank'},
+  DSContArea: {label: 'Contributing area', role: 'measure', unit: 'm²', note: 'drainage area at the downstream end'},
+  areaM2: {label: 'Catchment area', role: 'measure', unit: 'm²', note: "this reach's own catchment"},
+  Length: {label: 'Reach length', role: 'measure', unit: 'm'},
+  TDXHydroRegion: {label: 'TDX-Hydro region', role: 'category'},
+  groupId: {label: 'Group', role: 'category', note: 'the metadata file a reach belongs to'},
+  riverId: {label: 'River ID', role: 'identity'},
+  nextRiverId: {label: 'Next river ID', role: 'identity', note: 'downstream reach, -1 at a terminal'},
+  outletRiverId: {label: 'Outlet river ID', role: 'identity', note: 'terminal reach of the watershed'},
+  riverIndex: {label: 'River index', role: 'identity', note: 'row order in the metadata table'},
+};
+
+const ROLE_ORDER = {measure: 0, category: 1, identity: 2};
+
+/** Human-scale numbers for a menu: 1.2 M, 8.4 k, 0.75 — never 5384105885696. */
+export const compact = v => {
+  if (v == null || !isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a >= 1e12) return `${(v / 1e12).toFixed(1)} T`;
+  if (a >= 1e9) return `${(v / 1e9).toFixed(1)} G`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(1)} M`;
+  if (a >= 1e4) return `${(v / 1e3).toFixed(1)} k`;
+  if (a >= 100) return String(Math.round(v));
+  if (Number.isInteger(v)) return String(v);
+  // Number() again to drop the trailing zeros toPrecision leaves behind: 7.8, not 7.80.
+  return String(Number(v.toPrecision(3)));
+};
+
+/**
+ * A first threshold worth offering when someone adds a rule from the menu.
+ *
+ * Areas and lengths span six orders of magnitude, so their midpoint is geometric rather than
+ * arithmetic — the arithmetic midpoint of 8 M and 5.4 T is a number no reach is anywhere near.
+ * Rounded to one significant digit, because a suggestion that reads as 4.6e10 invites editing
+ * rather than trying.
+ */
+export function suggestedThreshold({type, min, max, values}) {
+  if (type === 'string') return values?.[0] ?? '';
+  if (min == null || max == null) return 0;
+  if (max - min <= 12) return Math.max(min, Math.round((min + max) / 2));
+  const mid = (min > 0 && max / Math.max(min, 1e-9) > 100)
+    ? Math.sqrt(min * max)
+    : (min + max) / 2;
+  const mag = 10 ** Math.floor(Math.log10(Math.abs(mid) || 1));
+  return Math.round(mid / mag) * mag;
+}
+
+/** Merge `vector_layers[].fields` (names + types) with tilestats (ranges + distinct values). */
+function build(fields, stats) {
+  const byName = new Map((stats?.attributes ?? []).map(a => [a.attribute, a]));
+  const names = new Set([...Object.keys(fields ?? {}), ...byName.keys()]);
+  return [...names].map(name => {
+    const s = byName.get(name);
+    const declared = String(fields?.[name] ?? s?.type ?? 'number').toLowerCase();
+    const type = declared === 'string' ? 'string' : declared === 'boolean' ? 'boolean' : 'number';
+    const known = KNOWN[name] ?? {};
+    const attr = {
+      name,
+      type,
+      label: known.label ?? name,
+      unit: known.unit ?? '',
+      note: known.note ?? '',
+      // An attribute nobody has described is more likely to be a new measure than a new id, and
+      // guessing "measure" only costs it a place higher in the menu.
+      role: known.role ?? (type === 'string' ? 'category' : 'measure'),
+      min: s?.min ?? null,
+      max: s?.max ?? null,
+      // tilestats lists up to 1000 distinct values; the strings are a real category list, the
+      // numbers are only a sample of what was seen and are not presented as choices.
+      values: type === 'string' ? (s?.values ?? []).map(String).sort() : [],
+    };
+    attr.suggested = suggestedThreshold(attr);
+    return attr;
+  }).sort((a, b) => (ROLE_ORDER[a.role] - ROLE_ORDER[b.role]) || a.label.localeCompare(b.label));
+}
+
+/**
+ * Read the archive's metadata and return the attribute menu.
+ *
+ * Never throws: a missing or unreadable metadata blob means the panel opens with no menu and a line
+ * saying so, which is a far better outcome than an init failure that takes the whole map with it.
+ */
+export async function loadStreamAttributes(archive) {
+  try {
+    const md = await archive.getMetadata();
+    const layer = (md.vector_layers ?? []).find(l => l.id === SOURCE_LAYER) ?? md.vector_layers?.[0];
+    const stats = (md.tilestats?.layers ?? []).find(l => l.layer === SOURCE_LAYER) ?? md.tilestats?.layers?.[0];
+    const attributes = build(layer?.fields, stats);
+    if (!attributes.length) return {attributes: [], error: 'the tiles declare no attributes'};
+    return {
+      attributes,
+      minzoom: layer?.minzoom ?? md.minzoom ?? 0,
+      maxzoom: layer?.maxzoom ?? md.maxzoom ?? null,
+      reachCount: stats?.count ?? null,
+    };
+  } catch (err) {
+    console.warn('[style] could not read tile attributes', err);
+    return {attributes: [], error: err.message};
+  }
+}
+
+/**
+ * The one caveat worth saying out loud in the panel: a rule keyed to Strahler order below the zoom
+ * its reaches enter the pyramid draws nothing, and that is the tiles, not the rule.
+ */
+export function orderVisibilityWarning(condition, minZoom) {
+  if (condition?.attribute !== 'strahlerOrder') return null;
+  const order = Number(condition.value);
+  if (!isFinite(order) || !['>=', '>', '==', 'between'].includes(condition.op)) return null;
+  const wanted = condition.op === '>' ? order + 1 : order;
+  const from = firstZoomForOrder(wanted);
+  if (from == null) return `order ${wanted} is in no tile at any zoom`;
+  if (from > (minZoom ?? 0)) return `order ${wanted} first appears at z${from}`;
+  return null;
+}

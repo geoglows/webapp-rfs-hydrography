@@ -17,20 +17,13 @@ const mb = b => (b / 1e6).toFixed(1);
 const fmt = n => n.toLocaleString();
 
 /**
- * How the percentage is apportioned.
+ * One report per phase, each on its own scale.
  *
- * The old bar jumped 8 → 70 across however many batches there were, which on the common
- * single-batch case meant one step with a multi-second freeze either side of it. These weights
- * come from what the phases actually cost, and the read phase is driven by bytes off the wire
- * rather than by batch count, so the bar moves continuously through the part that takes longest.
+ * Every phase reports 0–100 of *itself* and the panel does the apportioning, which is what lets
+ * fetching and decoding — which interleave batch by batch — advance two separate bars at once
+ * instead of taking turns pushing one shared number around.
  */
-const P = {plan: 4, read: 66, encode: 22, write: 8};
-const AT = {
-  plan: 0,
-  read: P.plan,
-  encode: P.plan + P.read,
-  write: P.plan + P.read + P.encode,
-};
+const stage = (key, pct, detail, extra) => post('stage', {key, pct, detail, ...extra});
 
 const clock = s => {
   if (!isFinite(s) || s < 0) return '';
@@ -102,22 +95,23 @@ self.onmessage = async e => {
       return found !== -1 && want[found] <= hi;
     };
 
-    // Bytes off the wire, whatever phase asked for them. `stage` decides which phase's bar the
-    // arriving chunks drive, so the streaming callback does not have to know who called it.
+    // Bytes off the wire, whatever phase asked for them. `phase` decides which bar the arriving
+    // chunks drive, so the streaming callback does not have to know who called it.
     let fetched = 0;
-    let stage = 'open';
+    let phase = 'open';
     let onChunk = null;
     const raw = await hp.asyncBufferFromUrl({url}).catch(() => null);
     if (!raw) throw new Error('no geometry file for this Group (streams_<id>.geo.parquet)');
     const base = streamingBuffer(raw, url, n => {
       fetched += n;
-      if (stage === 'read') onChunk?.(n);
+      if (phase === 'read') onChunk?.(n);
     });
 
-    post('progress', {pct: 1, phase: 'Reading file index', detail: `${mb(raw.byteLength)} MB file`});
+    stage('index', 15, `${mb(raw.byteLength)} MB file`);
     const md = await hp.parquetMetadataAsync(base);
     const totalRows = Number(md.num_rows);
-    post('progress', {pct: AT.read, phase: 'Planning read', detail: `${md.row_groups.length} row groups`});
+    stage('index', 100, `${mb(fetched)} MB read · ${md.row_groups.length} row groups`);
+    stage('plan', 5, `scanning ${md.row_groups.length} row groups`);
 
     // ---- which row groups can hold a selected reach ----
     const picked = [];
@@ -153,6 +147,10 @@ self.onmessage = async e => {
       }
     }
     const spanBytes = batches.reduce((a, b) => a + (b.hi - b.lo), 0);
+    // The full accounting — rows kept of rows total, and why — is on the console line above; this
+    // is the part that fits on one row of the panel.
+    stage('plan', 100, `${picked.length}/${md.row_groups.length} groups · ${mb(spanBytes)} MB` +
+      (batches.length > 1 ? ` · ${batches.length} batches` : ''));
 
     // ---- read each batch ----
     // hyparquet slices per column per row group; on a file with ~1,800 such chunks that is
@@ -163,20 +161,18 @@ self.onmessage = async e => {
     const ri = cols.indexOf('riverId');
     const kept = [];
 
-    // The read phase is split between bytes arriving and rows being decoded, because both are slow
-    // and only one of them can report continuously. Fetching drives the bar chunk by chunk;
-    // decoding steps it once per batch, which is the finest granularity hyparquet offers.
-    const FETCH_W = 0.6, DECODE_W = 0.4;
+    // Fetching and decoding are separate phases on separate bars, because they interleave: a batch
+    // is decoded while nothing is on the wire, and the next batch is fetched while nothing is being
+    // decoded. Fetching reports chunk by chunk; decoding steps once per batch, which is the finest
+    // granularity hyparquet offers.
     let readBytes = 0, decodedBytes = 0;
     const readStart = performance.now();
-    const readPct = () => AT.read + P.read *
-      (FETCH_W * Math.min(1, readBytes / spanBytes) + DECODE_W * (decodedBytes / spanBytes));
-    const bar = throttle((pct, phase, detail) => post('progress', {pct, phase, detail}));
+    const fetchBar = throttle((pct, detail) => stage('geometry', pct, detail));
 
-    stage = 'read';
+    phase = 'read';
     onChunk = n => {
       readBytes += n;
-      bar.emit(readPct(), 'Fetching geometry',
+      fetchBar.emit(100 * Math.min(1, readBytes / spanBytes),
         readDetail(Math.min(readBytes, spanBytes), spanBytes, readStart));
     };
 
@@ -193,8 +189,8 @@ self.onmessage = async e => {
           return base.slice(s, en);
         },
       };
-      const batchLabel = batches.length > 1 ? `batch ${bi + 1} of ${batches.length}, ` : '';
-      bar.flush(readPct(), 'Decoding rows', `${batchLabel}${fmt(b.end - b.start)} rows`);
+      const batchLabel = batches.length > 1 ? `batch ${bi + 1} of ${batches.length} · ` : '';
+      stage('decode', 100 * decodedBytes / spanBytes, `${batchLabel}${fmt(b.end - b.start)} rows`);
       await new Promise((resolve, reject) => {
         hp.parquetRead({
           file, metadata: md, compressors, columns: cols, rowFormat: 'array',
@@ -210,9 +206,13 @@ self.onmessage = async e => {
         }).catch(reject);
       });
       decodedBytes += b.hi - b.lo;
-      bar.flush(readPct(), 'Decoding rows', `${fmt(kept.length)} of ${fmt(ids.length)} reaches matched`);
+      stage('decode', 100 * decodedBytes / spanBytes,
+        `${batchLabel}${fmt(kept.length)} of ${fmt(ids.length)} reaches matched`);
     }
-    stage = 'done-reading';
+    phase = 'done-reading';
+    // The wire is quiet from here, so whatever the fetch bar was showing is what it fetched.
+    stage('geometry', 100, `${mb(Math.min(readBytes, spanBytes))} MB of geometry fetched`);
+    stage('decode', 100, `${fmt(kept.length)} of ${fmt(ids.length)} reaches matched`);
 
     const missing = ids.length - kept.length;
     if (missing > 0) {
@@ -230,12 +230,9 @@ self.onmessage = async e => {
     const bbox = [Infinity, Infinity, -Infinity, -Infinity];
     const geomTypes = new Set();
     const wkb = new Array(kept.length);
-    const encBar = throttle((pct, detail) =>
-      post('progress', {pct, phase: 'Encoding geometry', detail}));
-    stage = 'encode';
-    post('progress', {
-      pct: AT.encode, phase: 'Encoding geometry', detail: `0 / ${fmt(kept.length)} reaches`,
-    });
+    const encBar = throttle((pct, detail) => stage('encode', pct, detail));
+    phase = 'encode';
+    stage('encode', 0, `0 of ${fmt(kept.length)} reaches`);
     for (let i = 0; i < kept.length; i++) {
       const g = kept[i][gi];
       if (g) {
@@ -247,10 +244,10 @@ self.onmessage = async e => {
       // Synchronous, so the worker never yields — but postMessage still queues, and the main
       // thread is idle, so the bar keeps painting through a pass that can run for seconds.
       if ((i & 511) === 511) {
-        encBar.emit(AT.encode + P.encode * (i + 1) / kept.length,
-          `${fmt(i + 1)} / ${fmt(kept.length)} reaches`);
+        encBar.emit(100 * (i + 1) / kept.length, `${fmt(i + 1)} of ${fmt(kept.length)} reaches`);
       }
     }
+    stage('encode', 100, `${fmt(kept.length)} reaches · ${[...geomTypes].sort().join(', ') || 'no geometry'}`);
 
     // The source's own `geo` key, carried forward. It holds the CRS as PROJJSON, which is what
     // keeps a 3857 mapping file readable as 3857 and a 4326 file readable as 4326 — GDAL and
@@ -278,12 +275,9 @@ self.onmessage = async e => {
     });
 
     // parquetWriteBuffer is one synchronous call: it has either returned or it has not, and there
-    // is no callback to sample. An indeterminate bar says that honestly; a percentage here would
+    // is no callback to sample. An indeterminate line says that honestly; a percentage here would
     // be invented.
-    post('progress', {
-      pct: AT.write, phase: 'Writing GeoParquet', indeterminate: true,
-      detail: `${fmt(kept.length)} reaches, ${cols.length} columns`,
-    });
+    stage('write', 0, `${fmt(kept.length)} reaches, ${cols.length} columns`, {indeterminate: true});
 
     // SNAPPY, not ZSTD: hyparquet-writer labels pages ZSTD while writing them uncompressed when no
     // zstd compressor is supplied, and the result is a file GDAL refuses to open.
@@ -294,6 +288,7 @@ self.onmessage = async e => {
       rowGroupSize: 2000,
     });
     const buffer = out.buffer ? out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) : out;
+    stage('write', 100, `${mb(buffer.byteLength)} MB, snappy, ${Math.ceil(kept.length / 2000)} row groups`);
     post('done', {buffer, rows: kept.length, fetched});
   } catch (err) {
     post('error', {message: err.message});

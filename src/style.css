@@ -8,14 +8,18 @@
 :root {
   --bg:#0a0e17; --surface:#111827; --surface2:#1e293b; --border:#334155;
   --text:#e2e8f0; --text-dim:#94a3b8; --accent:#38bdf8; --accent-dim:#0ea5e9;
-  --stream:#2a7fd4; --selected:#e0417a; --upstream:#f06a1e; --group:#8b5cf6;
+  /* The three map roles. Kept in step with COLORS in src/streamStyle.js, which is what the map
+     actually paints — these are the legend swatches that have to match it. */
+  --stream:#4A90E2; --upstream:#7ED321; --selected:#F5A623; --group:#8b5cf6;
   --success:#10b981; --danger:#ef4444;
   --radius:6px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Source Sans 3',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh;width:100vw}
 #map{position:absolute;inset:0;z-index:0}
-#sidebar{position:absolute;top:16px;left:16px;z-index:10;width:352px;
+/* Narrow enough to leave the map the room, wide enough that the staged export block below reads as
+   rows rather than as wrapped text — the phase lines are what set the floor. */
+#sidebar{position:absolute;top:16px;left:16px;z-index:10;width:322px;
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
   display:flex;flex-direction:column;max-height:calc(100vh - 32px);
   box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden}
@@ -39,19 +43,13 @@ button:disabled{opacity:.4;cursor:not-allowed;background:var(--surface2);color:v
 #btn-clear:hover{color:var(--text);border-color:var(--text-dim)}
 
 /* ── the selection box ─────────────────────────────────────────────────────
-   What the old running log was mostly used to find out: how many reaches, and which. The id
-   preview scrolls on its own so a large selection cannot push the progress block off screen. */
+   How many reaches, and where they drain to. No list of the ids themselves: the count answers the
+   question, and the file is one click away for anyone who wants to read them. */
 #selection-info{padding:12px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;line-height:1.7;display:none}
 #selection-info .count{color:var(--upstream);font-weight:600;font-size:18px}
 #selection-info .outlet{color:var(--selected);font-weight:600}
 #selection-info .group{color:var(--group);font-weight:600}
 #selection-info .k{color:#64748b}
-/* word-break stays normal: the ids are space-separated, and break-all splits a riverId across two
-   lines, which makes the preview unreadable at exactly the moment it is being used to check one. */
-#selection-info .ids{margin-top:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);
-  border-radius:var(--radius);font-size:11px;line-height:1.6;color:var(--text-dim);
-  max-height:96px;overflow-y:auto;word-break:normal;overflow-wrap:normal}
-#selection-info .ids .more{color:#64748b;display:block;margin-top:4px}
 
 /* ── the download progress block ───────────────────────────────────────────
    Phase and percentage on one line, the bar under it, bytes/rate/eta under that. Hidden entirely
@@ -80,6 +78,62 @@ button:disabled{opacity:.4;cursor:not-allowed;background:var(--surface2);color:v
   #progress-fill{transition:none}
 }
 
+/* ── the staged export block ───────────────────────────────────────────────
+   Two bars — bytes off the wire, and work done on them — with the phases of each listed under it.
+   The whole plan is on screen from the start: pending phases sit greyed out, the running one is the
+   only line that moves, and finished ones keep the number they finished with. That is the point of
+   the block over a single bar — you can see which step is slow, and what is still to come. */
+#stages{display:none;padding:10px 20px 12px;border-top:1px solid var(--border);flex-shrink:0;
+  font-family:'JetBrains Mono',monospace}
+.stage-group{margin-bottom:10px}
+.stage-group:last-child{margin-bottom:0}
+.stage-group-head{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--text);margin-bottom:4px}
+.stage-group-pct{color:var(--accent);font-variant-numeric:tabular-nums}
+.stage-group.done .stage-group-pct{color:var(--success)}
+.stage-bar{height:5px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.stage-fill{height:100%;width:0%;border-radius:3px;
+  background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .18s linear}
+.stage-group.done .stage-fill{background:linear-gradient(90deg,var(--success),#34d399)}
+
+/* One phase. The 2px rule under each line is that phase's own progress — enough to see movement
+   without turning seven lines into seven full-weight bars.
+
+   The name column is max-content: a phase whose name is clipped is a phase you cannot identify,
+   which defeats the whole point of listing them. The detail takes what is left and ellipsises,
+   with the full text on the row's title. */
+.stage-line{display:grid;grid-template-columns:12px max-content minmax(0,1fr);align-items:baseline;
+  column-gap:6px;font-size:10.5px;line-height:1.6;padding-top:4px;color:#64748b}
+.stage-mark{text-align:center;font-size:9px}
+.stage-name{white-space:nowrap}
+.stage-detail{font-size:9.5px;color:#475569;font-variant-numeric:tabular-nums;text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The running phase is the one with numbers worth reading — bytes, rate, time left — so it gets a
+   line of its own for them. Only one phase is active at a time, so this costs one row, not seven. */
+.stage-line.active .stage-detail{grid-column:2/4;text-align:left;white-space:normal;
+  color:var(--text-dim);line-height:1.45}
+.stage-line .stage-bar{grid-column:2/4;height:2px;margin-top:3px;background:rgba(51,65,85,.55)}
+.stage-line.pending .stage-bar,.stage-line.skipped .stage-bar{visibility:hidden}
+.stage-line.active{color:var(--text)}
+.stage-line.active .stage-mark{color:var(--accent)}
+.stage-line.active .stage-detail{color:var(--text-dim)}
+.stage-line.done{color:var(--text-dim)}
+.stage-line.done .stage-mark{color:var(--success)}
+.stage-line.done .stage-fill{background:var(--success);opacity:.55}
+.stage-line.skipped{opacity:.45}
+.stage-line.failed{color:#fca5a5}
+.stage-line.failed .stage-mark,.stage-line.failed .stage-detail{color:#fca5a5}
+.stage-line.failed .stage-fill{background:var(--danger);width:100%}
+/* One synchronous call that has either returned or not — a stripe says so; a percentage would be
+   invented. Same reasoning as the single bar's indeterminate state. */
+.stage-line.indeterminate .stage-fill{width:100%;transition:none;
+  background:repeating-linear-gradient(115deg,var(--accent-dim) 0 10px,transparent 10px 20px);
+  background-size:200% 100%;animation:progress-stripe 1s linear infinite}
+@media (prefers-reduced-motion:reduce){
+  .stage-line.indeterminate .stage-fill{animation:none;opacity:.6}
+  .stage-fill{transition:none}
+}
+
 /* ── the one status line ───────────────────────────────────────────────────
    Overwritten, never appended to. */
 #status{display:none;padding:9px 20px 11px;border-top:1px solid var(--border);
@@ -89,9 +143,15 @@ button:disabled{opacity:.4;cursor:not-allowed;background:var(--surface2);color:v
 #status.success{color:var(--success)}
 #status.error{color:#fca5a5;background:rgba(239,68,68,.09);border-top-color:rgba(239,68,68,.35)}
 
-#panel-right{position:absolute;top:16px;right:16px;z-index:10;width:230px;display:flex;flex-direction:column;gap:12px}
+/* The right column carries the legend, the hover readout and the styling panel. It is wide because
+   the styling panel is an editor — attribute, operator and value have to fit on one line — and it
+   collapses back to legend width when the panel is folded away. */
+#panel-right{position:absolute;top:16px;right:16px;z-index:10;width:376px;display:flex;flex-direction:column;
+  gap:12px;max-height:calc(100vh - 32px);min-height:0}
+#panel-right.style-collapsed{width:230px}
+@media (max-width:1280px){#panel-right{width:320px}}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  box-shadow:0 8px 32px rgba(0,0,0,.5);padding:12px 16px}
+  box-shadow:0 8px 32px rgba(0,0,0,.5);padding:12px 16px;flex-shrink:0}
 .card h2{font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;font-family:'JetBrains Mono',monospace}
 .legend-item{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12px;color:var(--text-dim)}
 .legend-item:last-child{margin-bottom:0}
@@ -107,3 +167,126 @@ button:disabled{opacity:.4;cursor:not-allowed;background:var(--surface2);color:v
 #group-readout .file{color:var(--text);word-break:break-all;display:block;margin-top:4px}
 #group-readout .hint{color:#64748b}
 #group-readout .loaded{color:var(--success)}
+
+/* ── the styling panel ─────────────────────────────────────────────────────
+   The one card that has to hold a form. It takes whatever height the cards above leave and scrolls
+   inside itself, so a style with a dozen rules never pushes the legend off the screen.
+
+   Everything in here is deliberately smaller and denser than the rest of the app: this is the panel
+   you work in with the map beside it, and every row that fits is a row you do not have to scroll to.
+   Zoom controls are always selects, never number inputs — the half-step grid is enforced by having
+   nothing else to pick from. */
+#style-card{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;padding-bottom:8px}
+#style-card h2{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0}
+#style-card h2 span:first-child{flex:1}
+#style-zoom{color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:0;text-transform:none}
+#style-collapse{flex:0 0 auto;width:22px;padding:1px 0;background:var(--surface2);color:var(--text-dim);
+  font-size:10px;line-height:1.4}
+#style-collapse:hover{color:var(--text);border-color:var(--text-dim)}
+#style-body{overflow-y:auto;min-height:0;font-size:11px;line-height:1.5;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+#panel-right.style-collapsed #style-body{display:none}
+#panel-right.style-collapsed #style-card{flex:0 0 auto}
+
+#style-body select,#style-body input[type=text],#style-body input[type=number]{
+  background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:3px 4px;min-width:0}
+#style-body select:focus,#style-body input:focus{outline:none;border-color:var(--accent)}
+#style-body input[type=color]{background:var(--bg);border:1px solid var(--border);border-radius:4px;
+  width:34px;height:22px;padding:1px;cursor:pointer;flex:0 0 auto}
+#style-body input[type=checkbox]{width:13px;height:13px;accent-color:var(--accent);cursor:pointer;flex:0 0 auto}
+#style-body .hint{color:#64748b;font-size:10px;text-transform:none;letter-spacing:0}
+#style-body .hidden{display:none}
+#style-body button{flex:0 0 auto;text-transform:none;letter-spacing:0}
+.mini{padding:2px 6px;font-size:10px;font-weight:600;background:var(--surface2);color:var(--text-dim);
+  border:1px solid var(--border);border-radius:4px;line-height:1.5}
+.mini:hover:not(:disabled){color:var(--text);border-color:var(--text-dim)}
+.mini:disabled{opacity:.3}
+.mini.x{color:#94a3b8;padding:2px 5px}
+.mini.x:hover{color:#fca5a5;border-color:#fca5a5}
+.mini.add{align-self:flex-start;color:var(--accent);border-style:dashed}
+
+.style-toolbar{display:flex;flex-direction:column;gap:6px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.style-toolbar .row{display:flex;align-items:center;gap:6px}
+.style-toolbar .row.check{cursor:pointer;color:var(--text-dim);font-size:10px}
+.style-toolbar select.preset{flex:1}
+button.seg{padding:3px 7px;font-size:10px;font-weight:600;background:var(--surface2);color:var(--text-dim);
+  border:1px solid var(--border);border-radius:4px}
+button.seg.on{background:var(--accent-dim);color:#04121c;border-color:var(--accent)}
+button.seg:disabled{opacity:.35}
+
+/* The attribute menu — the tiles' own field list, with what each one ranges over. Open by default,
+   because it is the thing to read first, but capped and scrolled on its own so it cannot push the
+   rules it exists to create off the bottom of the panel. */
+.attr-menu{margin:8px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg)}
+.attr-menu[open]{max-height:232px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.attr-menu>summary{cursor:pointer;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:10px;
+  font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;
+  position:sticky;top:0;background:var(--bg);z-index:1}
+.attr-group{padding:6px 8px 2px;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:#64748b;
+  font-family:'JetBrains Mono',monospace}
+.attr{padding:4px 8px 6px;border-top:1px solid rgba(51,65,85,.5)}
+.attr-top{display:flex;align-items:center;gap:5px}
+.attr-label{flex:1;color:var(--text);font-weight:600;font-size:11px}
+.attr-meta{color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:9.5px;margin-top:1px}
+.attr-note{color:#64748b;font-size:9.5px;margin-top:1px;line-height:1.4}
+.attr-identity .attr-label{color:var(--text-dim);font-weight:400}
+
+.style-section{margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+/* Title and hint share a line while both fit; a long title takes the line and drops the hint under
+   it, right-aligned, rather than squeezing both into a ragged two-line block. */
+.style-section h3{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;font-size:10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.7px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;
+  margin-bottom:6px}
+.style-section h3 .hint{margin-left:auto}
+/* nowrap so a long title claims the whole line and pushes the hint under it, instead of wrapping
+   inside itself and leaving the hint stranded beside a ragged two-line block. */
+.style-section h3>:first-child{flex:1;color:var(--text);white-space:nowrap}
+.style-section h3 .rule-count{text-transform:none;letter-spacing:0;font-weight:400;color:#64748b}
+
+.conds{display:flex;flex-direction:column;gap:4px;margin-bottom:4px}
+/* Add-condition on the left, the AND/OR choice on the right — the choice only exists, and only
+   appears, once there are two conditions for it to combine. */
+.conds-foot{display:flex;align-items:center;gap:5px}
+.conds-foot .mini.add{margin-right:auto}
+.conds-foot .stops-label{margin-left:4px}
+.cond{display:flex;align-items:center;gap:4px}
+.cond-attr{flex:1 1 40%}
+.cond-op{flex:0 0 auto;max-width:74px}
+.cond-val{flex:1 1 30%;width:100%}
+
+.rule{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);
+  padding:6px 7px;margin-bottom:6px}
+.rule.off{opacity:.5}
+.rule-head{display:flex;align-items:center;gap:5px}
+.rule-swatch{width:12px;height:12px;border-radius:3px;flex:0 0 auto;border:1px solid rgba(255,255,255,.15)}
+.rule-name{flex:1;background:transparent!important;border-color:transparent!important;
+  color:var(--text)!important;font-weight:600;font-size:11px!important;padding:2px 3px!important}
+.rule-name:hover{border-color:var(--border)!important}
+.rule-summary{display:flex;gap:6px;align-items:baseline;color:var(--text-dim);font-size:10px;
+  font-family:'JetBrains Mono',monospace;margin:3px 0 0 20px}
+.rule-summary span:first-child{flex:1;word-break:break-word}
+.rule-count{color:#64748b;white-space:nowrap;font-variant-numeric:tabular-nums}
+.warn{margin:4px 0 0 20px;color:#fcd34d;font-size:9.5px;line-height:1.4}
+.rule-when{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+
+.block-style{display:flex;flex-direction:column;gap:5px;margin-top:6px;padding-top:6px;
+  border-top:1px dashed rgba(51,65,85,.7)}
+.stops{display:flex;flex-direction:column;gap:3px}
+.stops-head{display:flex;align-items:center;gap:6px}
+.stops-label{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:.7px;
+  color:#64748b;text-transform:uppercase;flex:0 0 auto}
+.stops-count{flex:1;color:#475569;font-size:9.5px}
+.stop{display:flex;align-items:center;gap:4px;padding-left:10px}
+.stop-zoom{flex:0 0 auto;width:62px;font-variant-numeric:tabular-nums}
+.stop-val{flex:1}
+.zrange{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.zsel{flex:0 0 auto;width:62px}
+.zsep{color:#64748b;font-size:10px}
+
+.style-footer{display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.style-footer button{flex:1;padding:6px 8px;font-size:10.5px;background:var(--surface2);color:var(--text-dim);
+  border:1px solid var(--border);border-radius:var(--radius);font-weight:600}
+.style-footer button:hover{color:var(--text);border-color:var(--text-dim)}
+.style-footer button.primary{background:var(--accent-dim);color:#04121c;border-color:var(--accent);flex:1.6}
+.style-footer button.primary:hover{background:var(--accent);color:#04121c}

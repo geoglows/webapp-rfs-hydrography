@@ -87,9 +87,39 @@ export const MAX_HIGHLIGHT = 400000;
  * but the tab's memory is still the ceiling. The ID list export has no such limit. */
 export const MAX_GEOMETRY_REACHES = 100000;
 
-/** The v3 tiles carry strahlerOrder >= 2 only from z9 up, so below this a reach can be in the
- * subset and absent from the map. The trace reads the metadata table, not tiles, so the count is right
- * either way — only the highlight looks sparse. */
-export const FULL_DETAIL_ZOOM = 9;
+/**
+ * The zoom range the style editor works in, and the step it works on.
+ *
+ * MAX_ZOOM is the map's own limit, so a stop can be placed anywhere the map can actually go and
+ * nowhere it cannot. The half-zoom step is the editing grid: every zoom the editor offers, and
+ * every zoom it will accept from a loaded file, is a multiple of it. A grid rather than free text
+ * is what keeps two stops from landing 0.03 apart and producing a ramp nobody meant to draw.
+ */
+export const MIN_ZOOM = 0;
+export const MAX_ZOOM = 16;
+export const ZOOM_STEP = 0.5;
+
+/**
+ * What the tiles hold at each zoom, which is not the same question as what a style asks to draw.
+ *
+ * Tippecanoe dropped reaches by Strahler order as it built the pyramid — the `-j` filter is
+ * recorded verbatim in the archive's own `generator_options`, and this is that ladder:
+ * order >= 7 below z5, >= 6 at z5-6, >= 4 at z7-8, >= 2 from z9. Order 1 is in no tile at any zoom.
+ *
+ * A style cannot draw what the tile does not carry, so a rule that asks for order-3 reaches at z6
+ * is not broken, it is empty — and the panel says so rather than leaving someone to wonder.
+ */
+export const TILE_ORDER_LADDER = [
+  {zoom: 0, minOrder: 7},
+  {zoom: 5, minOrder: 6},
+  {zoom: 7, minOrder: 4},
+  {zoom: 9, minOrder: 2},
+];
+
+/** Which zoom a reach of this Strahler order first appears at, per the ladder above. */
+export const firstZoomForOrder = order => {
+  const hit = TILE_ORDER_LADDER.find(step => order >= step.minOrder);
+  return hit ? hit.zoom : null;
+};
 
 export const DEEP_LINK_RIVER = params.get('river');
