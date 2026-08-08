@@ -8,13 +8,8 @@
  */
 import './style.css';
 import {DEEP_LINK_RIVER, URLS, V3_BASE} from './config.js';
-import {
-  candidateGroups, getGroupIndex, isLoaded, loadGroupNetwork, loadedGroupIds, loadGroupIndex, groupInfo,
-} from './data.js';
-import {
-  applyHighlight, applyStreamStyle, archive, clearHighlight, highlightCount, initMap, map,
-  setGroupVisible, setSelectionHighlightVisible, streamLayerIds,
-} from './map.js';
+import {candidateGroups, getGroupIndex, groupInfo, isLoaded, loadedGroupIds, loadGroupIndex, loadGroupNetwork,} from './data.js';
+import {applyHighlight, applyStreamStyle, archive, clearHighlight, highlightCount, initMap, map, setGroupVisible, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
 import {compileLayers} from './streamStyle.js';
 import {loadStreamAttributes} from './streamAttributes.js';
 import {createStylePanel} from './stylePanel.js';
@@ -208,6 +203,7 @@ function selectionChanged() {
  * tax on panning.
  */
 let countCost = 0;
+
 function refreshCounts() {
   if (!stylePanel || countCost > 300) return;
   const layers = streamLayerIds();
@@ -258,13 +254,13 @@ function renderGroupReadout(ids, stream) {
     return;
   }
   el.innerHTML = shown.map(id => {
-    const v = groupInfo(id);
-    return `<div><span class="id">Group ${id}</span>` +
-      (isLoaded(id) ? ' <span class="loaded">&#9679; loaded</span>' : '') +
-      (v ? `<br>${fmt(v.reachCount)} reaches &middot; ${mb(v.networkBytes ?? v.metadataBytes)}` +
-        `<br><span class="hint">TDX ${v.tdxHydroRegion}</span>` : '') +
-      `<span class="file">metadata_${id}.parquet</span></div>`;
-  }).join('<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">') +
+      const v = groupInfo(id);
+      return `<div><span class="id">Group ${id}</span>` +
+        (isLoaded(id) ? ' <span class="loaded">&#9679; loaded</span>' : '') +
+        (v ? `<br>${fmt(v.reachCount)} reaches &middot; ${mb(v.networkBytes ?? v.metadataBytes)}` +
+          `<br><span class="hint">TDX ${v.tdxHydroRegion}</span>` : '') +
+        `<span class="file">metadata_${id}.parquet</span></div>`;
+    }).join('<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">') +
     (streamGroup != null && ids.length > 1
       ? `<div class="hint" style="margin-top:6px">${ids.length} placeholder hulls overlap here; the reach's own groupId decides.</div>`
       : '');
@@ -316,7 +312,9 @@ let ready = false;
       status,
       pmtiles: URLS.streamsPmtiles,
     });
-    const showZoom = () => { $('style-zoom').textContent = `z${m.getZoom().toFixed(1)}`; };
+    const showZoom = () => {
+      $('style-zoom').textContent = `z${m.getZoom().toFixed(1)}`;
+    };
     m.on('move', showZoom);
     m.on('idle', refreshCounts);
     showZoom();
@@ -342,16 +340,40 @@ let ready = false;
 // than a scattering of globals, so what is exposed is legible from here and nothing else leaks.
 window.__explorer = {
   selectOutlet, subsetText, loadGroupNetwork, candidateGroups, URLS,
-  get ready() { return ready; },
-  get style() { return stylePanel; },
-  get styleLayers() { return streamLayerIds(); },
-  get progressHistory() { return progressHistory; },
-  get stageHistory() { return stageHistory; },
-  get map() { return map; },
-  get groupIndex() { return getGroupIndex(); },
-  get loadedGroups() { return loadedGroupIds(); },
-  get selectedIds() { return selectedIds; },
-  get highlightedCount() { return highlightCount(); },
-  get outletId() { return outletId; },
-  get outletGroup() { return outletGroup; },
+  get ready() {
+    return ready;
+  },
+  get style() {
+    return stylePanel;
+  },
+  get styleLayers() {
+    return streamLayerIds();
+  },
+  get progressHistory() {
+    return progressHistory;
+  },
+  get stageHistory() {
+    return stageHistory;
+  },
+  get map() {
+    return map;
+  },
+  get groupIndex() {
+    return getGroupIndex();
+  },
+  get loadedGroups() {
+    return loadedGroupIds();
+  },
+  get selectedIds() {
+    return selectedIds;
+  },
+  get highlightedCount() {
+    return highlightCount();
+  },
+  get outletId() {
+    return outletId;
+  },
+  get outletGroup() {
+    return outletGroup;
+  },
 };

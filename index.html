@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>RFS Hydrography Explorer</title>
-<meta name="description" content="Explore the GEOGLOWS River Forecast System v3 hydrography. Select a river, take everything upstream of it, export the reaches as an ID list or as GeoParquet, and style the network by attribute and zoom."/>
-<!-- A stream network as the thing it is: a tree of straight segments, drawn with the trunk thicker
-     than the branches and the branches thicker than the headwaters — Strahler order, at 16px. -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1520'/%3E%3Cg fill='none' stroke='%234A90E2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 28.5V18' stroke-width='4'/%3E%3Cpath d='M16 18L8.5 11.5M16 18L23.5 11.5' stroke-width='2.9'/%3E%3Cpath d='M8.5 11.5L4.5 6M8.5 11.5L10.5 4.5M23.5 11.5L21.5 4.5M23.5 11.5L27.5 6' stroke-width='1.9'/%3E%3C/g%3E%3C/svg%3E"/>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>RFS Hydrography Explorer</title>
+  <meta content="Explore the GEOGLOWS River Forecast System v3 hydrography. Select a river, take everything upstream of it, export the reaches as an ID list or as GeoParquet, and style the network by attribute and zoom." name="description"/>
+  <!-- A stream network as the thing it is: a tree of straight segments, drawn with the trunk thicker
+       than the branches and the branches thicker than the headwaters — Strahler order, at 16px. -->
+  <link href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1520'/%3E%3Cg fill='none' stroke='%234A90E2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 28.5V18' stroke-width='4'/%3E%3Cpath d='M16 18L8.5 11.5M16 18L23.5 11.5' stroke-width='2.9'/%3E%3Cpath d='M8.5 11.5L4.5 6M8.5 11.5L10.5 4.5M23.5 11.5L21.5 4.5M23.5 11.5L27.5 6' stroke-width='1.9'/%3E%3C/g%3E%3C/svg%3E" rel="icon"/>
+  <link href="https://fonts.googleapis.com" rel="preconnect">
+  <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 <div id="map"></div>
@@ -23,17 +23,17 @@
   <div id="controls">
     <div class="field">
       <label for="input-id">River ID (riverId)</label>
-      <input id="input-id" type="text" placeholder="e.g. 620002797" spellcheck="false" inputmode="numeric"/>
+      <input id="input-id" inputmode="numeric" placeholder="e.g. 620002797" spellcheck="false" type="text"/>
     </div>
     <div class="btn-row">
-      <button id="btn-download" disabled>Download list</button>
+      <button disabled id="btn-download">Download list</button>
       <button id="btn-clear">Clear</button>
     </div>
     <div class="btn-row">
-      <button id="btn-copy" disabled>Copy IDs to clipboard</button>
+      <button disabled id="btn-copy">Copy IDs to clipboard</button>
     </div>
     <div class="btn-row">
-      <button id="btn-geoparquet" disabled>Download GeoParquet</button>
+      <button disabled id="btn-geoparquet">Download GeoParquet</button>
     </div>
   </div>
 
@@ -45,7 +45,9 @@
       <span id="progress-phase"></span>
       <span id="progress-pct"></span>
     </div>
-    <div id="progress-bar"><div id="progress-fill"></div></div>
+    <div id="progress-bar">
+      <div id="progress-fill"></div>
+    </div>
     <div id="progress-detail"></div>
   </div>
 
@@ -60,7 +62,7 @@
   <div class="card">
     <h2>Layers</h2>
     <div class="legend-item">
-      <input type="checkbox" id="toggle-group" checked/>
+      <input checked id="toggle-group" type="checkbox"/>
       <label for="toggle-group">Group boundaries</label>
       <span class="swatch poly"></span>
     </div>
@@ -82,6 +84,6 @@
     <div id="style-body"></div>
   </div>
 </div>
-<script type="module" src="/src/main.js"></script>
+<script src="/src/main.js" type="module"></script>
 </body>
 </html>

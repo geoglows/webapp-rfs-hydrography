@@ -122,7 +122,9 @@ export const progress = {
     detailEl.textContent = detail;
     detailEl.style.display = detail ? 'block' : 'none';
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => { progressEl.style.display = 'none'; }, 1400);
+    hideTimer = setTimeout(() => {
+      progressEl.style.display = 'none';
+    }, 1400);
   },
 
   hide() {
@@ -255,8 +257,10 @@ export const stages = {
     if (indeterminate != null) s.indeterminate = indeterminate;
     s.state = state ?? (s.pct >= 100 ? 'done' : 'active');
     if (s.state === 'done') s.indeterminate = false;
-    stageHistory.push({key, pct: s.pct, state: s.state, detail: s.detail,
-      indeterminate: !!s.indeterminate, at: performance.now()});
+    stageHistory.push({
+      key, pct: s.pct, state: s.state, detail: s.detail,
+      indeterminate: !!s.indeterminate, at: performance.now()
+    });
     if (stageHistory.length > STAGE_HISTORY) stageHistory.shift();
     paintPhase(key);
     paintGroup(plan.phases.find(p => p.key === key)?.group);

@@ -1,18 +1,5 @@
-/**
- * The Group index, the per-Group metadata tables, and the upstream walk over them.
- *
- * A Group (`groupId` in the pipeline, `group=XXX` in the bucket) is assigned by `outletRiverId`, so
- * every reach in a terminal watershed carries the same one and a reverse walk provably cannot leave
- * the file it started in. That is what makes a per-Group read sufficient: the app opens the one
- * metadata file holding the selected outlet rather than the whole 5.5M-edge global network.
- *
- * The graph itself is rfsjs's `RiverNetwork`, fed one Group's edges instead of the FIM network graph
- * it usually loads. Everything this app asks of the topology — membership, the upstream walk — is
- * already there, along with traversals it does not use yet (`downstreamOf`, `between`,
- * `aroundClick`), so there is no reason for a second implementation to exist here.
- */
 import {asyncBufferFromUrl, parquetRead} from 'hyparquet';
-import {RiverNetwork} from 'rfsjs/v3/hydrography';
+import {RiverNetwork} from 'riverforecastsystem/v3/hydrography';
 import {URLS} from './config.js';
 import {streamingBuffer, throttle} from './rangeBuffer.js';
 import {fmt, mb, progress} from './ui.js';

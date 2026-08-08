@@ -1,19 +1,19 @@
 /**
  * Where the v3 hydrography lives, and the two limits the app enforces.
  *
- * The bucket layout is rfsjs's to know, not this app's: `configure({v3Base})` points the package at
- * a root and `urls.*` builds the paths, so this app never spells out `hydrography/group=N` itself
- * and cannot drift from the rest of the RFS clients if the layout moves.
+ * The bucket layout is riverforecastsystem's to know, not this app's: `configure({v3Base})` points
+ * the package at a root and `urls.*` builds the paths, so this app never spells out
+ * `hydrography/group=N` itself and cannot drift from the rest of the RFS clients if the layout moves.
  *
- * The placeholder Group boundaries and the Group index have no rfsjs builder because they are this
- * app's own artifacts rather than published v3 products. They still hang off
+ * The placeholder Group boundaries and the Group index have no riverforecastsystem builder because
+ * they are this app's own artifacts rather than published v3 products. They still hang off
  * `urls.hydrographyGroup()`, so the shared builder remains the single source of the base path.
  *
  * Resolution order for the root: `?base=` on the URL, then VITE_V3_BASE at build time, then
- * rfsjs's own default — the published v3 root, which is where a deployed copy of this app should
- * be reading from. Both overrides may be relative (`data`, `../shared-data`); they resolve against
- * document.baseURI rather than a literal path, so one bundle works at the domain root, at
- * /rfs-hydrography-explorer/, and under a PORTAL_BASE prefix without being rebuilt.
+ * riverforecastsystem's own default — the published v3 root, which is where a deployed copy of this
+ * app should be reading from. Both overrides may be relative (`data`, `../shared-data`); they
+ * resolve against document.baseURI rather than a literal path, so one bundle works at the domain
+ * root, at /rfs-hydrography-explorer/, and under a PORTAL_BASE prefix without being rebuilt.
  *
  * There is deliberately no relative `data/` fallback here. Serving the artifacts next to the
  * bundle is a dev-server arrangement (see vite.config.js), not how the app is deployed: the portal
@@ -21,7 +21,7 @@
  * at a prefix that does not exist and every read comes back 403. `data` is set as the default for
  * dev in .env.development, where it is true, and nowhere else.
  */
-import {configure, getConfig, urls} from 'rfsjs/v3';
+import {configure, getConfig, urls} from 'riverforecastsystem/v3';
 
 const params = new URLSearchParams(window.location.search);
 
@@ -36,8 +36,9 @@ const resolveBase = () => {
   return configured ? absolute(configured) : undefined;
 };
 
-// Leaving v3Base unset keeps rfsjs's default; passing undefined to configure() would too, but not
-// calling it at all is the clearer statement of "this app has nothing to say about the root".
+// Leaving v3Base unset keeps riverforecastsystem's default; passing undefined to configure() would
+// too, but not calling it at all is the clearer statement of "this app has nothing to say about the
+// root".
 const resolved = resolveBase();
 if (resolved) configure({v3Base: resolved});
 

@@ -91,7 +91,13 @@ self.onmessage = async e => {
     // Any selected riverIndex inside [lo, hi]? Binary search for the first >= lo.
     const hasIndexIn = (lo, hi) => {
       let a = 0, b = want.length - 1, found = -1;
-      while (a <= b) { const m = (a + b) >> 1; if (want[m] >= lo) { found = m; b = m - 1; } else a = m + 1; }
+      while (a <= b) {
+        const m = (a + b) >> 1;
+        if (want[m] >= lo) {
+          found = m;
+          b = m - 1;
+        } else a = m + 1;
+      }
       return found !== -1 && want[found] <= hi;
     };
 
@@ -132,7 +138,7 @@ self.onmessage = async e => {
       `${keptRows.toLocaleString()}/${totalRows.toLocaleString()} rows to read` +
       (keptRows > 0.5 * totalRows
         ? ' — pruning is weak: published riverIndex order scatters a watershed across the file ' +
-          '(see docs/subsetting-geometry.md)'
+        '(see docs/subsetting-geometry.md)'
         : ''));
     if (!picked.length) throw new Error('no row group contains any selected reach');
 
@@ -141,7 +147,8 @@ self.onmessage = async e => {
     for (const rg of picked) {
       const last = batches[batches.length - 1];
       if (last && rg.start === last.end && rg.hi - last.lo <= MAX_SPAN_BYTES) {
-        last.end = rg.end; last.hi = Math.max(last.hi, rg.hi);
+        last.end = rg.end;
+        last.hi = Math.max(last.hi, rg.hi);
       } else {
         batches.push({start: rg.start, end: rg.end, lo: rg.lo, hi: rg.hi});
       }

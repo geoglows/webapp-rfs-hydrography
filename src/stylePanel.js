@@ -18,8 +18,21 @@
  */
 import {compact, orderVisibilityWarning} from './streamAttributes.js';
 import {
-  BASE_LAYER_ID, cloneSpec, COLORS, defaultSpec, describeConditions, fmtZoom, MATCH_MODES,
-  newCondition, newRule, opsFor, parseStyleJson, presetsFor, ruleLayerId, shadowedRules, styleJson,
+  BASE_LAYER_ID,
+  cloneSpec,
+  COLORS,
+  defaultSpec,
+  describeConditions,
+  fmtZoom,
+  MATCH_MODES,
+  newCondition,
+  newRule,
+  opsFor,
+  parseStyleJson,
+  presetsFor,
+  ruleLayerId,
+  shadowedRules,
+  styleJson,
   ZOOM_STEPS,
 } from './streamStyle.js';
 
@@ -85,9 +98,15 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
   // Values coalesce into one repaint per frame; structure repaints and rebuilds immediately.
   const changed = () => {
     if (pending) return;
-    pending = requestAnimationFrame(() => { pending = null; onChange(); });
+    pending = requestAnimationFrame(() => {
+      pending = null;
+      onChange();
+    });
   };
-  const restructured = () => { render(); onChange(); };
+  const restructured = () => {
+    render();
+    onChange();
+  };
 
   // ── attribute menu ─────────────────────────────────────────────────────────
   function attrRow(a) {
@@ -109,7 +128,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
         }),
         el('button', {
           class: 'mini', title: `Add a global visibility filter — draw only the reaches matching a condition on ${a.name}`,
-          onclick: () => { spec.filter.conditions.push(newCondition(a)); restructured(); },
+          onclick: () => {
+            spec.filter.conditions.push(newCondition(a));
+            restructured();
+          },
           text: '+ filter',
         }),
       ]),
@@ -126,8 +148,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
         : `Attributes unavailable${attrError ? ` — ${attrError}` : ''}`,
     }));
     if (!attributes.length) {
-      box.appendChild(el('div', {class: 'hint',
-        text: 'Rules can still be written by hand, but the menu comes from the tile metadata.'}));
+      box.appendChild(el('div', {
+        class: 'hint',
+        text: 'Rules can still be written by hand, but the menu comes from the tile metadata.'
+      }));
       return box;
     }
     const roles = [['measure', 'Measures — what to style by'], ['category', 'Categories — what to filter by'],
@@ -153,7 +177,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
         ? attributes.map(x => ({value: x.name, label: x.label}))
         : [{value: c.attribute, label: c.attribute}],
       c.attribute,
-      e => { list[i] = newCondition(attrOf(e.target.value)); restructured(); },
+      e => {
+        list[i] = newCondition(attrOf(e.target.value));
+        restructured();
+      },
       'cond-attr',
     ));
     row.appendChild(select(ops.map(o => ({value: o.op, label: o.label})), c.op, e => {
@@ -170,12 +197,18 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
       row.appendChild(el('input', {
         class: 'cond-val', type: c.type === 'string' ? 'text' : 'number', value: c.value ?? '',
         placeholder: c.op === 'in' ? 'a, b, c' : '',
-        oninput: e => { c.value = c.type === 'string' ? e.target.value : num(e.target.value); changed(); },
+        oninput: e => {
+          c.value = c.type === 'string' ? e.target.value : num(e.target.value);
+          changed();
+        },
       }));
       if (c.op === 'between') {
         row.appendChild(el('input', {
           class: 'cond-val', type: 'number', value: c.value2 ?? '',
-          oninput: e => { c.value2 = num(e.target.value); changed(); },
+          oninput: e => {
+            c.value2 = num(e.target.value);
+            changed();
+          },
         }));
       }
     }
@@ -209,7 +242,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
         el('span', {class: 'stops-label', text: 'MATCH'}),
         ...MATCH_MODES.map(m => el('button', {
           class: `seg${(owner.match ?? 'all') === m.mode ? ' on' : ''}`, text: m.label, title: m.hint,
-          onclick: () => { owner.match = m.mode; restructured(); },
+          onclick: () => {
+            owner.match = m.mode;
+            restructured();
+          },
         })),
       ] : []),
     ]));
@@ -228,8 +264,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
     const box = el('div', {class: 'stops'});
     box.appendChild(el('div', {class: 'stops-head'}, [
       el('span', {class: 'stops-label', text: label}),
-      el('span', {class: 'stops-count',
-        text: stops.length > 1 ? `${stops.length} zoom stops` : 'constant'}),
+      el('span', {
+        class: 'stops-count',
+        text: stops.length > 1 ? `${stops.length} zoom stops` : 'constant'
+      }),
       el('button', {
         class: 'mini add', text: '+ zoom', title: 'Add a stop at another zoom',
         onclick: () => {
@@ -259,8 +297,13 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
           },
         }),
         stops.length > 1
-          ? el('button', {class: 'mini x', text: '✕', title: 'Remove stop',
-            onclick: () => { stops.splice(i, 1); restructured(); }})
+          ? el('button', {
+            class: 'mini x', text: '✕', title: 'Remove stop',
+            onclick: () => {
+              stops.splice(i, 1);
+              restructured();
+            }
+          })
           : null,
       ]);
       box.appendChild(row);
@@ -286,8 +329,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
         }
         restructured();
       }, 'zsel'),
-      el('span', {class: 'hint', title: 'MapLibre hides a layer at and above its maxzoom',
-        text: block.maxZoom != null ? '(hidden at and above)' : ''}),
+      el('span', {
+        class: 'hint', title: 'MapLibre hides a layer at and above its maxzoom',
+        text: block.maxZoom != null ? '(hidden at and above)' : ''
+      }),
     ]);
   }
 
@@ -311,24 +356,48 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
     const head = el('div', {class: 'rule-head'}, [
       el('input', {
         type: 'checkbox', class: 'rule-on', checked: rule.enabled !== false,
-        title: 'Draw this rule', onchange: e => { rule.enabled = e.target.checked; restructured(); },
+        title: 'Draw this rule', onchange: e => {
+          rule.enabled = e.target.checked;
+          restructured();
+        },
       }),
       swatch,
       el('input', {
         type: 'text', class: 'rule-name', value: rule.name,
-        oninput: e => { rule.name = e.target.value; changed(); },
+        oninput: e => {
+          rule.name = e.target.value;
+          changed();
+        },
       }),
-      el('button', {class: 'mini', text: '▲', title: 'Higher priority', disabled: i === 0,
-        onclick: () => { spec.rules.splice(i - 1, 0, spec.rules.splice(i, 1)[0]); restructured(); }}),
-      el('button', {class: 'mini', text: '▼', title: 'Lower priority', disabled: i === spec.rules.length - 1,
-        onclick: () => { spec.rules.splice(i + 1, 0, spec.rules.splice(i, 1)[0]); restructured(); }}),
-      el('button', {class: 'mini x', text: '✕', title: 'Delete rule',
-        onclick: () => { spec.rules.splice(i, 1); collapsed.delete(rule.id); restructured(); }}),
-      el('button', {class: 'mini caret', text: open ? '▾' : '▸', title: open ? 'Collapse' : 'Expand',
+      el('button', {
+        class: 'mini', text: '▲', title: 'Higher priority', disabled: i === 0,
+        onclick: () => {
+          spec.rules.splice(i - 1, 0, spec.rules.splice(i, 1)[0]);
+          restructured();
+        }
+      }),
+      el('button', {
+        class: 'mini', text: '▼', title: 'Lower priority', disabled: i === spec.rules.length - 1,
+        onclick: () => {
+          spec.rules.splice(i + 1, 0, spec.rules.splice(i, 1)[0]);
+          restructured();
+        }
+      }),
+      el('button', {
+        class: 'mini x', text: '✕', title: 'Delete rule',
+        onclick: () => {
+          spec.rules.splice(i, 1);
+          collapsed.delete(rule.id);
+          restructured();
+        }
+      }),
+      el('button', {
+        class: 'mini caret', text: open ? '▾' : '▸', title: open ? 'Collapse' : 'Expand',
         onclick: () => {
           if (open) collapsed.add(rule.id); else collapsed.delete(rule.id);
           render();
-        }}),
+        }
+      }),
     ]);
 
     const card = el('div', {class: `rule${rule.enabled === false ? ' off' : ''}${open ? ' open' : ''}`}, [head]);
@@ -341,8 +410,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
     ]));
 
     if (shadowed) {
-      card.appendChild(el('div', {class: 'warn',
-        text: 'never applies — a rule above it already matches every reach'}));
+      card.appendChild(el('div', {
+        class: 'warn',
+        text: 'never applies — a rule above it already matches every reach'
+      }));
     }
     for (const c of rule.conditions) {
       const w = orderVisibilityWarning(c, rule.minZoom);
@@ -364,7 +435,10 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
     const scopeBtn = (mode, label, title) => el('button', {
       class: `seg${spec.scope === mode ? ' on' : ''}`, text: label, title,
       disabled: mode === 'selection' && !sel,
-      onclick: () => { spec.scope = mode; restructured(); },
+      onclick: () => {
+        spec.scope = mode;
+        restructured();
+      },
     });
 
     return el('div', {class: 'style-toolbar'}, [
@@ -382,8 +456,13 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
             restructured();
             status(`Preset "${p.label}" — ${p.hint}`, 'info');
           }, 'preset'),
-        el('button', {class: 'mini', text: '+ rule', title: 'Add an empty rule',
-          onclick: () => { spec.rules.unshift(newRule({name: `Rule ${spec.rules.length + 1}`})); restructured(); }}),
+        el('button', {
+          class: 'mini', text: '+ rule', title: 'Add an empty rule',
+          onclick: () => {
+            spec.rules.unshift(newRule({name: `Rule ${spec.rules.length + 1}`}));
+            restructured();
+          }
+        }),
       ]),
       el('div', {class: 'row'}, [
         el('span', {class: 'stops-label', text: 'PREVIEW'}),
@@ -393,21 +472,35 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
           : 'Select a river first'),
       ]),
       el('label', {class: 'row check'}, [
-        el('input', {type: 'checkbox', checked: highlight,
-          onchange: e => { highlight = e.target.checked; onChange(); }}),
+        el('input', {
+          type: 'checkbox', checked: highlight,
+          onchange: e => {
+            highlight = e.target.checked;
+            onChange();
+          }
+        }),
         el('span', {text: 'Keep the selection highlight over the style'}),
       ]),
     ]);
   }
 
   function footer() {
-    const file = el('input', {type: 'file', accept: 'application/json,.json', class: 'hidden',
-      onchange: e => loadFile(e.target.files?.[0])});
+    const file = el('input', {
+      type: 'file', accept: 'application/json,.json', class: 'hidden',
+      onchange: e => loadFile(e.target.files?.[0])
+    });
     return el('div', {class: 'style-footer'}, [
       el('button', {class: 'primary', text: 'Download JSON', onclick: download}),
       el('button', {text: 'Load', title: 'Read a style JSON back in', onclick: () => file.click()}),
-      el('button', {text: 'Reset', title: 'Back to the v3 default',
-        onclick: () => { spec = defaultSpec(); collapsed.clear(); restructured(); status('Style reset to the v3 default', ''); }}),
+      el('button', {
+        text: 'Reset', title: 'Back to the v3 default',
+        onclick: () => {
+          spec = defaultSpec();
+          collapsed.clear();
+          restructured();
+          status('Style reset to the v3 default', '');
+        }
+      }),
       file,
     ]);
   }
@@ -481,19 +574,28 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
     ]);
     spec.rules.forEach((r, i) => rulesBox.appendChild(ruleCard(r, i, shadow.has(r.id))));
     if (!spec.rules.length) {
-      rulesBox.appendChild(el('div', {class: 'hint',
-        text: 'No styling rules — every reach is drawn by the base style below. Add one from the attribute menu, or start from a preset.'}));
+      rulesBox.appendChild(el('div', {
+        class: 'hint',
+        text: 'No styling rules — every reach is drawn by the base style below. Add one from the attribute menu, or start from a preset.'
+      }));
     }
     mount.appendChild(rulesBox);
 
     const n = counts.get(BASE_LAYER_ID);
     mount.appendChild(el('section', {class: 'style-section'}, [
       el('h3', {}, [
-        el('input', {type: 'text', class: 'rule-name base-name', value: spec.base.name,
+        el('input', {
+          type: 'text', class: 'rule-name base-name', value: spec.base.name,
           title: 'What the base style is called in the exported file',
-          oninput: e => { spec.base.name = e.target.value; changed(); }}),
-        el('span', {class: 'rule-count base-count',
-          text: n == null ? 'everything no rule claimed' : `≈${n.toLocaleString()} on screen`}),
+          oninput: e => {
+            spec.base.name = e.target.value;
+            changed();
+          }
+        }),
+        el('span', {
+          class: 'rule-count base-count',
+          text: n == null ? 'everything no rule claimed' : `≈${n.toLocaleString()} on screen`
+        }),
       ]),
       styleBlock(spec.base),
     ]));
@@ -526,7 +628,9 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
       if (slot && base != null) slot.textContent = `≈${base.toLocaleString()} on screen`;
     },
     /** A selection appeared or went away — the scope control depends on it. */
-    selectionChanged() { render(); },
+    selectionChanged() {
+      render();
+    },
     getSpec: () => spec,
     setSpec(next) {
       spec = cloneSpec(next);

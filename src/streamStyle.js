@@ -351,9 +351,11 @@ export function styleJson(spec, {pmtiles, selection = null} = {}) {
     name: clean.name,
     zoom: {min: MIN_ZOOM, max: MAX_ZOOM, step: ZOOM_STEP},
     scope: clean.scope === 'selection' && selection
-      ? {mode: 'selection', outletRiverId: selection.outletId, groupId: selection.groupId,
+      ? {
+        mode: 'selection', outletRiverId: selection.outletId, groupId: selection.groupId,
         reachCount: selection.count,
-        note: 'styled for one subset — pair this file with the exported river ID list'}
+        note: 'styled for one subset — pair this file with the exported river ID list'
+      }
       : {mode: 'all'},
     filter: clean.filter,
     base: clean.base,
