@@ -30,12 +30,35 @@ export const clock = s => {
   return m ? `${m}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${s.toFixed(s < 10 ? 1 : 0)}s`;
 };
 
-/** The one status line. `cls` is '' | 'info' | 'success' | 'error'. */
-export function status(msg, cls = '') {
-  statusEl.textContent = msg || '';
-  statusEl.className = cls;
-  statusEl.style.display = msg ? 'block' : 'none';
+/**
+ * The status block: one line, or a few.
+ *
+ * It is normally one line, and `status()` below is the whole of what most callers want. The
+ * exception is a run that produces more than one result — the GeoParquet export saves a streams
+ * file and then a catchments file — where one line overwriting the other would throw away the
+ * first result to announce the second. Each line keeps its own class, so a saved file stays green
+ * next to a warning that is not.
+ *
+ * `cls` is '' | 'info' | 'success' | 'error', and the block takes the strongest of them: an error
+ * anywhere is what the panel should look like from across the room.
+ */
+const RANK = {'': 0, info: 1, success: 2, error: 3};
+
+export function statusLines(lines) {
+  const shown = lines.filter(l => l && l.text);
+  statusEl.replaceChildren(...shown.map(l => {
+    const n = document.createElement('div');
+    n.className = `status-line ${l.cls || ''}`.trim();
+    n.textContent = l.text;
+    return n;
+  }));
+  statusEl.className = shown.reduce((worst, l) =>
+    (RANK[l.cls || ''] > RANK[worst] ? (l.cls || '') : worst), '');
+  statusEl.style.display = shown.length ? 'block' : 'none';
 }
+
+/** The one status line. `cls` is '' | 'info' | 'success' | 'error'. */
+export const status = (msg, cls = '') => statusLines([{text: msg, cls}]);
 
 export const clearStatus = () => status('');
 

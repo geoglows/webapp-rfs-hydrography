@@ -252,6 +252,22 @@ export const cloneSpec = spec => JSON.parse(JSON.stringify(spec));
 
 // ── compile ──────────────────────────────────────────────────────────────────
 /**
+ * "this reach is in the selection", as a filter over the tiles' own `riverIndex`.
+ *
+ * The subset is an index range (see data.js), and the range is the same two numbers whatever its
+ * size — so a 234,000-reach watershed is this three-term expression and nothing else. It replaced a
+ * `feature-state` highlight that cost one `setFeatureState` per reach and had to give up past
+ * 400,000 of them; there is no longer any ceiling, and a reach is coloured the instant its tile
+ * arrives rather than when the app gets around to writing state for it.
+ */
+export const inRangeExpr = ({lo, hi}) => [
+  'all',
+  ['has', 'riverIndex'],
+  ['>=', ['get', 'riverIndex'], lo],
+  ['<=', ['get', 'riverIndex'], hi],
+];
+
+/**
  * The spec as MapLibre layers, bottom first.
  *
  * `highlight` folds the app's own selection colours in; the JSON export compiles without it, so
@@ -259,23 +275,23 @@ export const cloneSpec = spec => JSON.parse(JSON.stringify(spec));
  * fades everything the current subset does not contain, which is only meaningful while a selection
  * exists — with none, it compiles as 'all'.
  */
-export function compileLayers(spec, {highlight = false, outletId = null, hasSelection = false} = {}) {
+export function compileLayers(spec, {highlight = false, selection = null} = {}) {
   const rules = (spec.rules ?? []).filter(r => r.enabled !== false);
   const globalFilter = conditionsExpr(spec.filter?.conditions, spec.filter?.match);
   const ruleFilters = rules.map(r => conditionsExpr(r.conditions, r.match));
 
-  const scoped = spec.scope === 'selection' && hasSelection;
-  const inSelection = outletId != null
-    ? ['any', ['boolean', ['feature-state', 'up'], false], ['==', ['get', 'riverId'], outletId]]
-    : ['boolean', ['feature-state', 'up'], false];
-  const isUp = ['boolean', ['feature-state', 'up'], false];
+  const scoped = spec.scope === 'selection' && selection != null;
+  // The outlet is the top of its own range, so one expression covers the subset and the reach it
+  // drains to — no separate `== riverId` term, which is what the feature-state version needed.
+  const isUp = selection ? inRangeExpr(selection) : null;
+  const on = highlight && isUp != null;
 
-  const colorOut = v => (highlight ? ['case', isUp, COLORS.upstream, v] : v);
-  const widthOut = v => (highlight
+  const colorOut = v => (on ? ['case', isUp, COLORS.upstream, v] : v);
+  const widthOut = v => (on
     ? ['case', isUp, Math.round(v * UP_WIDTH_SCALE * 100) / 100, v]
     : v);
   const opacityOut = v => (scoped
-    ? ['case', inSelection, v, Math.round(v * OUT_OF_SCOPE_OPACITY * 1000) / 1000]
+    ? ['case', isUp, v, Math.round(v * OUT_OF_SCOPE_OPACITY * 1000) / 1000]
     : v);
 
   const layer = (id, style, filter, meta) => {
@@ -354,7 +370,7 @@ export function styleJson(spec, {pmtiles, selection = null} = {}) {
       ? {
         mode: 'selection', outletRiverId: selection.outletId, groupId: selection.groupId,
         reachCount: selection.count,
-        note: 'styled for one subset — pair this file with the exported river ID list'
+        note: 'styled for one subset — pair this file with the exported GeoParquet'
       }
       : {mode: 'all'},
     filter: clean.filter,

@@ -1,161 +1,112 @@
 /**
  * RFS Hydrography Explorer — pick a reach, take everything upstream of it, export it.
  *
- * The whole app rests on one property of the v3 network: a Group (`groupId`) is assigned by
- * `outletRiverId`, so every reach in a terminal watershed shares one and an upstream walk cannot
- * leave the Group it started in. That is why a subset needs exactly one metadata file, and why
- * the Group boundaries are worth drawing — they are the index to which file to open.
+ * The whole app rests on one property of the v3 network: reaches are numbered in post-order, so
+ * everything upstream of a reach is the contiguous `riverIndex` range ending at it. See data.js.
+ *
+ * A selection begins at a clicked feature and nowhere else. The tile carries `riverIndex` and
+ * `upstreamCount`, which are the subset, and `groupId`, which is the Group whose geometry file the
+ * export opens — so a click makes no request of any kind. Nothing is read at boot either: the app
+ * opens the map and waits. The export reads the Group's own two published geometry files and
+ * nothing else — `streams_<group>.geo.parquet` and `catchments_<group>.geo.parquet` — and it reads
+ * them in a worker. There is no index file any more, and no parquet on the main thread at all.
  */
 import './style.css';
-import {DEEP_LINK_RIVER, URLS, V3_BASE} from './config.js';
-import {candidateGroups, getGroupIndex, groupInfo, isLoaded, loadedGroupIds, loadGroupIndex, loadGroupNetwork,} from './data.js';
-import {applyHighlight, applyStreamStyle, archive, clearHighlight, highlightCount, initMap, map, setGroupVisible, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
+import {URLS, V3_BASE} from './config.js';
+import {upstreamRange} from './data.js';
+import {applyHighlight, applyStreamStyle, archive, clearHighlight, currentSelection, initMap, layersVisible, map, setGroupHover, setLayersVisible, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
 import {compileLayers} from './streamStyle.js';
 import {loadStreamAttributes} from './streamAttributes.js';
 import {createStylePanel} from './stylePanel.js';
 import {downloadGeometry} from './geometry.js';
-import {clearStatus, fmt, mb, progress, progressHistory, stageHistory, stages, status} from './ui.js';
+import {clearStatus, fmt, progress, progressHistory, stageHistory, stages, status} from './ui.js';
 
-let outletId = null;
-let outletGroup = null;
-let selectedIds = null;
+/**
+ * The current subset: an outlet and an index range, never a list of ids.
+ *
+ * `sel` is what a selection *is* now — `{outletId, riverIndex, upstreamCount, lo, hi, count,
+ * groupId}`. No list of ids is ever built: the index range is printed in the selection box, and
+ * the exported files carry `riverId` on every row for anyone who wants the ids themselves.
+ */
+let sel = null;
 let hoverGroupIds = [];
 let stylePanel = null;
 
 const $ = id => document.getElementById(id);
 
 // ── selection ────────────────────────────────────────────────────────────────
-async function selectOutlet(riverId, {groupId = null, lngLat = null, fly = false} = {}) {
-  if (!Number.isInteger(riverId) || riverId <= 0) {
-    status(`"${riverId}" is not a River ID — expected a positive whole number`, 'error');
-    return;
-  }
-  $('input-id').value = String(riverId);
-  setBusy(true);
+/**
+ * Select a clicked reach and everything upstream of it.
+ *
+ * `at` is the reach's own tile properties, and that is the entire input: `riverIndex` and
+ * `upstreamCount` are the subset, `groupId` is the geometry file the export opens, `strahlerOrder`
+ * is the readout. Nothing is looked up and nothing is fetched — the whole function is arithmetic,
+ * which is why it is synchronous.
+ */
+function selectOutlet(at) {
+  const num = v => (Number.isFinite(Number(v)) ? Number(v) : null);
+  const riverId = num(at.riverId);
+  const riverIndex = num(at.riverIndex);
+  const upstreamCount = num(at.upstreamCount);
   clearStatus();
-  progress.begin(`Looking up ${riverId}`);
   try {
-    // A map click already knows the Group — the tiles carry groupId per reach. A typed id does not.
-    let conn = null;
-    if (groupId != null && Number.isFinite(groupId)) {
-      conn = await loadGroupNetwork(groupId);
-      if (!conn.network.has(riverId)) conn = null;
+    if (riverId == null || riverIndex == null || upstreamCount == null) {
+      throw new Error('That reach is missing riverId, riverIndex or upstreamCount — the tiles it ' +
+        'came from cannot describe a subset');
     }
-    if (!conn) {
-      // Three distinct ways a typed id can fail, and saying which one it was is the difference
-      // between "you mistyped the region digits" and "that reach was simplified out of v3".
-      const {prefix, inRegion, candidates} = candidateGroups(riverId, lngLat || map.getCenter());
-      if (!inRegion.length) {
-        progress.hide();
-        status(`No Group carries the id prefix ${prefix}. v3 riverIds start with one of the ` +
-          `50 two-digit TDX-Hydro region codes.`, 'error');
-        return;
-      }
-      if (!candidates.length) {
-        progress.hide();
-        status(`${riverId} falls outside the id range of all ${inRegion.length} Group(s) in TDX ` +
-          `region ${inRegion[0].tdxHydroRegion} — not in the v3 network.`, 'error');
-        return;
-      }
-      for (const c of candidates) {
-        const candidate = await loadGroupNetwork(c.groupId);
-        if (candidate.network.has(riverId)) {
-          conn = candidate;
-          break;
-        }
-      }
-      if (!conn) {
-        progress.hide();
-        status(`River ${riverId} is not in the v3 network.`, 'error');
-        return;
-      }
-    }
-
-    progress.set(96, {phase: 'Tracing upstream', detail: `from Group ${conn.groupId}`});
-    const ids = conn.network.upstreamOf(riverId);
-
-    outletId = riverId;
-    outletGroup = conn.groupId;
-    selectedIds = ids;
-    applyHighlight(ids, riverId);
-    renderSelectionInfo(conn);
+    const range = upstreamRange({riverIndex, upstreamCount});
+    sel = {
+      outletId: riverId,
+      riverIndex: range.hi,
+      upstreamCount,
+      lo: range.lo,
+      hi: range.hi,
+      count: range.count,
+      groupId: num(at.groupId),
+      strahlerOrder: num(at.strahlerOrder),
+    };
+    applyHighlight({lo: sel.lo, hi: sel.hi}, riverId, applyStyle);
+    renderSelectionInfo();
     selectionChanged();
-
-    const at = lngLat || conn.attrs.get(riverId);
-    if (at && fly) {
-      map.flyTo({center: [at.lng ?? at.lon, at.lat], zoom: Math.max(map.getZoom(), 8), duration: 900});
-    }
-    progress.finish(`${fmt(ids.size)} reaches selected`, `Group ${conn.groupId}`);
+    setBusy(false);
+    status(`${fmt(sel.count)} reaches selected` +
+      (sel.groupId != null ? ` · Group ${sel.groupId}` : ''), 'success');
   } catch (err) {
-    progress.hide();
     status(err.message, 'error');
     console.error(err);
-  } finally {
-    setBusy(false);
   }
 }
 
 /**
  * The selection box: how many reaches, and where they drain to.
  *
- * The count, the outlet and the Group are what a subset is identified by. There is no preview of
- * the ids themselves — forty of two hundred thousand answered no question the count did not, and
- * the file is one click away for anyone who wants to look at them.
+ * The index range is printed alongside the count because it *is* the subset — two numbers anyone
+ * can carry into a query against the same data, and the thing to quote when a subset looks wrong.
  */
-function renderSelectionInfo(conn) {
+function renderSelectionInfo() {
   const el = $('selection-info');
-  const m = conn.attrs.get(outletId) || {};
-  const n = selectedIds.size;
+  const n = sel.count;
   el.style.display = 'block';
   el.innerHTML =
     `<span class="count">${fmt(n)}</span> <span class="k">stream${n === 1 ? '' : 's'} selected</span>` +
-    `<br><span class="k">outlet</span> <span class="outlet">${outletId}</span>` +
-    (m.strahlerOrder != null ? ` <span class="k">ord</span> ${m.strahlerOrder}` : '') +
-    ` <span class="k">group</span> <span class="group">${outletGroup}</span>`;
+    `<br><span class="k">outlet</span> <span class="outlet">${sel.outletId}</span>` +
+    (sel.strahlerOrder != null ? ` <span class="k">ord</span> ${sel.strahlerOrder}` : '') +
+    (sel.groupId != null ? ` <span class="k">group</span> <span class="group">${sel.groupId}</span>` : '') +
+    `<br><span class="k">riverIndex</span> ${fmt(sel.lo)}&ndash;${fmt(sel.hi)}`;
 }
 
-// The export buttons track whether a selection exists, not whether the last lookup succeeded — a
-// typo after a good subset must not strand the user with a selection on screen they cannot export.
+// The export button tracks whether a selection exists, not whether the last click succeeded — a
+// click on empty water after a good subset must not strand the user with a selection on screen
+// they cannot export.
 function setBusy(busy) {
-  $('input-id').disabled = busy;
-  const exportable = !busy && selectedIds !== null;
-  for (const id of ['btn-download', 'btn-copy', 'btn-geoparquet']) $(id).disabled = !exportable;
-}
-
-// ── exports ──────────────────────────────────────────────────────────────────
-// Ascending rather than BFS order so two runs of the same outlet produce identical files and a
-// diff between two subsets means something.
-const subsetText = () => [...selectedIds].sort((a, b) => a - b).join('\n') + '\n';
-
-function downloadList() {
-  if (!selectedIds) return;
-  const name = `rfs_v3_group${outletGroup}_${outletId}_riverids.txt`;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([subsetText()], {type: 'text/plain'}));
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  status(`Saved ${name} — ${fmt(selectedIds.size)} ids`, 'success');
-}
-
-async function copyList() {
-  if (!selectedIds) return;
-  try {
-    await navigator.clipboard.writeText(subsetText());
-    status(`Copied ${fmt(selectedIds.size)} river IDs to the clipboard`, 'success');
-  } catch (err) {
-    status(`Clipboard blocked (${err.message}) — use Download instead`, 'error');
-  }
+  $('btn-geoparquet').disabled = busy || sel === null;
 }
 
 function clearSelection() {
-  clearHighlight();
-  outletId = null;
-  outletGroup = null;
-  selectedIds = null;
-  $('input-id').value = '';
+  sel = null;
+  clearHighlight(applyStyle);
   $('selection-info').style.display = 'none';
-  for (const id of ['btn-download', 'btn-copy', 'btn-geoparquet']) $(id).disabled = true;
+  $('btn-geoparquet').disabled = true;
   clearStatus();
   progress.hide();
   stages.hide();
@@ -175,7 +126,7 @@ function applyStyle() {
   if (!stylePanel || !map) return;
   const spec = stylePanel.getSpec();
   const {highlight} = stylePanel.options();
-  applyStreamStyle(compileLayers(spec, {highlight, outletId, hasSelection: selectedIds !== null}));
+  applyStreamStyle(compileLayers(spec, {highlight, selection: currentSelection()}));
   setSelectionHighlightVisible(highlight);
   // The legend swatch describes the network's colour, so it follows the base style rather than
   // going quietly stale the first time someone changes it.
@@ -183,8 +134,8 @@ function applyStyle() {
   if (base) document.documentElement.style.setProperty('--stream', base);
 }
 
-const selectionForStyle = () => (selectedIds
-  ? {outletId, groupId: outletGroup, count: selectedIds.size}
+const selectionForStyle = () => (sel
+  ? {outletId: sel.outletId, groupId: sel.groupId, count: sel.count}
   : null);
 
 function selectionChanged() {
@@ -223,75 +174,86 @@ function refreshCounts() {
 
 // ── map interactions ─────────────────────────────────────────────────────────
 function clearGroupHover() {
-  for (const id of hoverGroupIds) map.setFeatureState({source: 'group', id}, {hover: false});
+  setGroupHover([]);
   hoverGroupIds = [];
 }
 
+/**
+ * The pointer, and the Group outline under it.
+ *
+ * There is no readout to fill any more, so the hover is purely what the map shows: a pointer over
+ * anything clickable, and the boundary under the cursor drawn a little harder than its neighbours.
+ * A boundary polygon is tiled, so one Group comes back once per tile under the cursor and the ids
+ * are deduped — the hover state is keyed by them and wants each one once.
+ */
 function onMapHover(e) {
   // Every layer the style compiled to, not just the base one — a reach claimed by a rule is drawn
   // by that rule's layer and would be invisible to a query naming only `streams`.
   const stream = map.queryRenderedFeatures(e.point, {layers: streamLayerIds()})[0];
   map.getCanvas().style.cursor = stream ? 'pointer' : '';
 
-  const ids = map.queryRenderedFeatures(e.point, {layers: ['group-fill']})
-    .map(f => f.id).filter(id => id != null);
+  const ids = [...new Set(map.queryRenderedFeatures(e.point, {layers: ['group-fill']})
+    .map(f => f.id).filter(id => id != null))];
   if (ids.join() !== hoverGroupIds.join()) {
-    clearGroupHover();
-    for (const id of ids) map.setFeatureState({source: 'group', id}, {hover: true});
+    setGroupHover(ids);
     hoverGroupIds = ids;
   }
-  renderGroupReadout(ids, stream);
 }
 
-function renderGroupReadout(ids, stream) {
-  const el = $('group-readout');
-  // A reach knows its own Group from the tile attribute; the polygons are the reference layer, and
-  // where they overlap (they are hulls, so they do near the edges) the reach's own groupId wins.
-  const streamGroup = stream?.properties?.groupId;
-  const shown = streamGroup != null ? [streamGroup] : ids;
-  if (!shown.length) {
-    el.innerHTML = '<span class="hint">Hover the map.</span>';
-    return;
-  }
-  el.innerHTML = shown.map(id => {
-      const v = groupInfo(id);
-      return `<div><span class="id">Group ${id}</span>` +
-        (isLoaded(id) ? ' <span class="loaded">&#9679; loaded</span>' : '') +
-        (v ? `<br>${fmt(v.reachCount)} reaches &middot; ${mb(v.networkBytes ?? v.metadataBytes)}` +
-          `<br><span class="hint">TDX ${v.tdxHydroRegion}</span>` : '') +
-        `<span class="file">metadata_${id}.parquet</span></div>`;
-    }).join('<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">') +
-    (streamGroup != null && ids.length > 1
-      ? `<div class="hint" style="margin-top:6px">${ids.length} placeholder hulls overlap here; the reach's own groupId decides.</div>`
-      : '');
-}
-
-async function onMapClick(e) {
+function onMapClick(e) {
   const hits = map.queryRenderedFeatures(
     [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]], {layers: streamLayerIds()});
   if (!hits.length) return;
   const p = hits[0].properties;
   if (p.riverId == null) return;
-  await selectOutlet(Number(p.riverId), {groupId: Number(p.groupId), lngLat: e.lngLat});
+  // The feature is the selection: outlet, index, upstream count and Group all come off it.
+  selectOutlet(p);
 }
 
 // ── boot ─────────────────────────────────────────────────────────────────────
-$('input-id').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  const v = e.target.value.trim();
-  if (v) selectOutlet(Number(v), {fly: true});
-});
-$('btn-download').addEventListener('click', downloadList);
-$('btn-copy').addEventListener('click', copyList);
 $('btn-clear').addEventListener('click', clearSelection);
-$('btn-geoparquet').addEventListener('click', () => downloadGeometry({
-  groupId: outletGroup, outletId, ids: selectedIds, onSettled: () => setBusy(false),
-}));
-$('toggle-group').addEventListener('change', e => setGroupVisible(e.target.checked));
-$('style-collapse').addEventListener('click', () => {
-  const collapsed = $('panel-right').classList.toggle('style-collapsed');
+// The export runs for as long as two files take, so the button goes with it: `onSettled` fires
+// whether it finished, failed or refused to start, which is what makes disabling it here safe.
+$('btn-geoparquet').addEventListener('click', () => {
+  if (!sel) return;
+  setBusy(true);
+  downloadGeometry({
+    groupId: sel.groupId, outletId: sel.outletId, lo: sel.lo, hi: sel.hi, count: sel.count,
+    onSettled: () => setBusy(false),
+  });
+});
+/**
+ * The styling panel, folded or open — the class, the glyph and the tooltip in one place, because
+ * all three have to agree and the starting state is set the same way a click is.
+ *
+ * It starts folded. The panel is an editor and the map is what someone came for: collapsed it is
+ * the legend and one chevron, and expanding it is one click for the people who want it. Nothing
+ * about it is deferred by folding it — the spec is compiled and the layers are on the map either
+ * way, so what opens is already in step with what is drawn.
+ */
+function setStyleCollapsed(collapsed) {
+  $('panel-right').classList.toggle('style-collapsed', collapsed);
   $('style-collapse').textContent = collapsed ? '▸' : '▾';
   $('style-collapse').title = collapsed ? 'Expand the styling panel' : 'Collapse the styling panel';
+}
+
+$('style-collapse').addEventListener('click', () =>
+  setStyleCollapsed(!$('panel-right').classList.contains('style-collapsed')));
+setStyleCollapsed(true);
+
+/**
+ * The layer checkboxes, which are a view of the map and not a record of anything.
+ *
+ * Each box names its layers in `data-layers`, so the legend row *is* the wiring — one delegated
+ * listener covers however many rows the HTML has, and adding a layer to the panel needs no change
+ * here. The boxes are then set from what those layers are actually doing, so the starting state is
+ * declared once, in the style, and never risks disagreeing with the mark in the box.
+ */
+const layerBoxes = () => [...$('layer-toggles').querySelectorAll('input[type=checkbox]')];
+const layersOf = box => box.dataset.layers.split(' ');
+
+$('layer-toggles').addEventListener('change', e => {
+  setLayersVisible(layersOf(e.target), e.target.checked);
 });
 
 let ready = false;
@@ -299,11 +261,12 @@ let ready = false;
 (async () => {
   try {
     console.info(`[explorer] v3 base ${V3_BASE}`);
-    progress.begin('Loading network index');
-    const [m] = await Promise.all([initMap(), loadGroupIndex()]);
+    progress.begin('Loading the map');
+    const m = await initMap();
     m.on('click', onMapClick);
     m.on('mousemove', onMapHover);
     m.on('mouseout', clearGroupHover);
+    for (const box of layerBoxes()) box.checked = layersVisible(layersOf(box));
 
     stylePanel = createStylePanel({
       mount: $('style-body'),
@@ -318,16 +281,9 @@ let ready = false;
     m.on('move', showZoom);
     m.on('idle', refreshCounts);
     showZoom();
-    // The attribute menu is the tiles' own metadata, so it arrives after the map does and the panel
-    // is usable (presets, base style) in the meantime.
     loadStreamAttributes(archive).then(info => stylePanel.setAttributes(info));
-
-    const meta = getGroupIndex().meta;
     progress.hide();
     ready = true;
-    status(`${meta.groupCount} Groups · ${fmt(meta.reachCount)} reaches. ` +
-      `Click a river, or type a River ID.`, '');
-    if (DEEP_LINK_RIVER) await selectOutlet(Number(DEEP_LINK_RIVER), {fly: true});
   } catch (err) {
     progress.hide();
     status(`Init failed: ${err.message}`, 'error');
@@ -339,7 +295,7 @@ let ready = false;
 // see which layers the spec compiled to, replay the progress history. One named namespace rather
 // than a scattering of globals, so what is exposed is legible from here and nothing else leaks.
 window.__explorer = {
-  selectOutlet, subsetText, loadGroupNetwork, candidateGroups, URLS,
+  selectOutlet, upstreamRange, URLS,
   get ready() {
     return ready;
   },
@@ -358,22 +314,13 @@ window.__explorer = {
   get map() {
     return map;
   },
-  get groupIndex() {
-    return getGroupIndex();
-  },
-  get loadedGroups() {
-    return loadedGroupIds();
-  },
-  get selectedIds() {
-    return selectedIds;
-  },
-  get highlightedCount() {
-    return highlightCount();
+  get selection() {
+    return sel;
   },
   get outletId() {
-    return outletId;
+    return sel?.outletId ?? null;
   },
   get outletGroup() {
-    return outletGroup;
+    return sel?.groupId ?? null;
   },
 };

@@ -20,6 +20,7 @@
     --upstream: #7ED321;
     --selected: #F5A623;
     --group: #8b5cf6;
+    --catchment: #D55E00;
     --success: #10b981;
     --danger: #ef4444;
     --radius: 6px;
@@ -90,41 +91,6 @@ body {
     flex-shrink: 0
 }
 
-.field {
-    margin-bottom: 10px
-}
-
-.field label {
-    display: block;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: .8px;
-    margin-bottom: 4px;
-    font-family: 'JetBrains Mono', monospace
-}
-
-.field input {
-    width: 100%;
-    padding: 8px 10px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px
-}
-
-.field input:focus {
-    outline: none;
-    border-color: var(--accent)
-}
-
-.field input::placeholder {
-    color: #475569
-}
-
 .btn-row {
     display: flex;
     gap: 8px;
@@ -145,13 +111,15 @@ button {
     letter-spacing: .5px
 }
 
-#btn-download {
+/* The export is the thing the app is for, and now the only button that does any work, so it is the
+   one that gets the accent. Clear is the plain one beside it. */
+#btn-geoparquet {
     background: var(--accent-dim);
     color: #000;
     border-color: var(--accent)
 }
 
-#btn-download:hover:not(:disabled) {
+#btn-geoparquet:hover:not(:disabled) {
     background: var(--accent)
 }
 
@@ -163,12 +131,8 @@ button:disabled {
     border-color: var(--border)
 }
 
-#btn-copy, #btn-geoparquet {
-    background: var(--surface2);
-    color: var(--text-dim)
-}
 
-#btn-copy:hover:not(:disabled), #btn-geoparquet:hover:not(:disabled) {
+#btn-geoparquet:hover:not(:disabled) {
     color: var(--text);
     border-color: var(--text-dim)
 }
@@ -325,8 +289,14 @@ button:disabled {
     display: none;
     padding: 10px 20px 12px;
     border-top: 1px solid var(--border);
-    flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace
+    font-family: 'JetBrains Mono', monospace;
+    /* Four bars and fourteen phase lines is taller than a short viewport has to spare, and the
+       sidebar clips rather than scrolls. This is the one block that gives way: it scrolls within
+       itself so the status line under it — which is where the saved filenames are — is never the
+       thing pushed off the bottom. */
+    flex-shrink: 1;
+    min-height: 0;
+    overflow-y: auto
 }
 
 .stage-group {
@@ -503,6 +473,7 @@ button:disabled {
     display: none;
     padding: 9px 20px 11px;
     border-top: 1px solid var(--border);
+    flex-shrink: 0;
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     line-height: 1.6;
@@ -522,6 +493,25 @@ button:disabled {
     color: #fca5a5;
     background: rgba(239, 68, 68, .09);
     border-top-color: rgba(239, 68, 68, .35)
+}
+
+/* A run that saves two files reports two results. Each line keeps its own colour — a file that was
+   saved is green whatever else in the block went wrong — which is why these outrank the block's
+   own class rather than inheriting from it. */
+#status .status-line + .status-line {
+    margin-top: 5px
+}
+
+#status .status-line.info {
+    color: var(--accent)
+}
+
+#status .status-line.success {
+    color: var(--success)
+}
+
+#status .status-line.error {
+    color: #fca5a5
 }
 
 /* The right column carries the legend, the hover readout and the styling panel. It is wide because
@@ -559,7 +549,10 @@ button:disabled {
     flex-shrink: 0
 }
 
-.card h2 {
+/* The legend lives in the sidebar now rather than in a card of its own on the right, so the
+   heading style has to reach both places. The right column is down to the one card that has to be
+   there — the styling editor, which is wide because it is a form. */
+.card h2, #controls h2 {
     font-size: 11px;
     font-weight: 600;
     color: var(--text-dim);
@@ -582,6 +575,12 @@ button:disabled {
     margin-bottom: 0
 }
 
+/* The toggles are a group inside a longer list, so the row that ends the group keeps the gap: the
+   rule above would otherwise close it up against the first legend row that follows. */
+#layer-toggles .legend-item:last-child {
+    margin-bottom: 7px
+}
+
 .swatch {
     width: 20px;
     height: 3px;
@@ -601,10 +600,17 @@ button:disabled {
     background: var(--selected)
 }
 
+.swatch.catchment {
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid #000;
+    background: rgba(213, 94, 0, .45)
+}
+
 .swatch.poly {
     height: 12px;
     border-radius: 2px;
-    border: 1px dashed var(--group);
+    border: 1px solid var(--group);
     background: rgba(139, 92, 246, .18)
 }
 
@@ -618,34 +624,6 @@ button:disabled {
 .legend-item label {
     cursor: pointer;
     flex: 1
-}
-
-#group-readout {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    line-height: 1.7;
-    color: var(--text-dim)
-}
-
-#group-readout .id {
-    color: var(--group);
-    font-weight: 600;
-    font-size: 13px
-}
-
-#group-readout .file {
-    color: var(--text);
-    word-break: break-all;
-    display: block;
-    margin-top: 4px
-}
-
-#group-readout .hint {
-    color: #64748b
-}
-
-#group-readout .loaded {
-    color: var(--success)
 }
 
 /* ── the styling panel ─────────────────────────────────────────────────────

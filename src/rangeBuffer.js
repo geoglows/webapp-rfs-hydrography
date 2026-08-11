@@ -6,20 +6,6 @@
  * most of the wait on a geometry download. This wraps the same interface and streams the response
  * body instead, so the caller can report bytes actually transferred rather than leave the bar
  * sitting still.
- *
- * DOM-free on purpose: the main thread reads metadata tables through it and the geometry worker
- * reads row-group spans through it.
- */
-
-/**
- * Wrap `base` (anything with `byteLength` and `slice`) so every read streams from `url`.
- *
- * `onBytes(delta)` is called as chunks arrive. It reports bytes off the wire, not bytes of the
- * window asked for: a server that ignores Range sends the whole file and the caller should hear
- * about it, so progress driven by this needs clamping rather than trust.
- *
- * Falls back to `base.slice` whenever streaming is not on offer — no `fetch`, no `response.body`,
- * or a request that failed outright — because a slower read that works beats a progress bar.
  */
 export function streamingBuffer(base, url, onBytes) {
   if (typeof fetch !== 'function') return base;

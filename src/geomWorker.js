@@ -44,12 +44,57 @@ function readDetail(done, total, startedAt) {
 }
 
 /**
- * Widen `acc` by one GeoJSON geometry's coordinates, and record its type.
+ * The flat parquet schema's *top-level* columns, subtrees skipped.
  *
- * hyparquet decodes a GeoParquet WKB column into GeoJSON objects and offers no way to opt out
- * (neither `geoparquet:false` nor `geoParquet:false` has any effect in 1.27.1), so the rows
- * arrive as {type, coordinates} and the output column is re-encoded with geojsonToWkb. The
- * round trip is lossless — float64 in the WKB, float64 in JS, float64 back out.
+ * `schema.slice(1)` is not this. The list is a depth-first flattening, so a nested column arrives
+ * as its own node followed by its children — `geometry`, `list`, `element`, `list`, `element`,
+ * `x`, `y` — and handing those names to `parquetRead` fails with "parquet column not found: list".
+ * It went unnoticed while the export read `streams_mapping_`, whose geometry is a flat WKB
+ * BYTE_ARRAY with no children at all.
+ */
+function topLevelColumns(schema) {
+  const out = [];
+  let pos = 1;
+  const consume = () => {
+    const node = schema[pos++];
+    for (let k = 0; k < (node.num_children ?? 0); k++) consume();
+    return node;
+  };
+  while (pos < schema.length) out.push(consume());
+  return out;
+}
+
+/**
+ * A decoded geometry value as GeoJSON, whichever way the source stored it.
+ *
+ * GeoParquet allows two encodings and v3 uses both across its history. A WKB column comes back
+ * from hyparquet already decoded to `{type, coordinates}` — it offers no way to opt out (neither
+ * `geoparquet:false` nor `geoParquet:false` has any effect in 1.27.1). A 1.1 *native* column —
+ * which is what `streams_<id>.geo.parquet` uses, declaring `"encoding": "multilinestring"` — comes
+ * back as the nested lists themselves, with each coordinate a `{x, y}` struct.
+ *
+ * Both are normalised here so everything downstream sees GeoJSON and the output is WKB either way.
+ * The round trip is lossless: float64 in the source, float64 in JS, float64 back out.
+ */
+const NATIVE_GEOMETRY_TYPES = {
+  point: 'Point', linestring: 'LineString', polygon: 'Polygon',
+  multipoint: 'MultiPoint', multilinestring: 'MultiLineString', multipolygon: 'MultiPolygon',
+};
+
+const nativeCoords = v => (Array.isArray(v)
+  ? v.map(nativeCoords)
+  : (v.z == null ? [v.x, v.y] : [v.x, v.y, v.z]));
+
+function asGeoJson(value, nativeType) {
+  if (value == null) return null;
+  // A WKB source is already {type, coordinates}; a native one is bare nested lists.
+  if (!Array.isArray(value)) return value.type && value.coordinates ? value : null;
+  if (!nativeType) return null;
+  return {type: nativeType, coordinates: nativeCoords(value)};
+}
+
+/**
+ * Widen `acc` by one GeoJSON geometry's coordinates, and record its type.
  */
 function scanGeometry(g, acc, types) {
   if (!g || !g.coordinates) return;
@@ -84,30 +129,24 @@ function rowGroupSpan(rg) {
 }
 
 self.onmessage = async e => {
-  const {url, ids, riverIndexes} = e.data;
+  // The selection is a riverIndex range, so both questions this worker used to answer with a
+  // sorted array and a hash set are now interval arithmetic: a row group is worth reading when it
+  // overlaps [selLo, selHi], and a row is wanted when its index is inside it.
+  const {url, lo: selLo, hi: selHi} = e.data;
+  const wanted = selHi - selLo + 1;
   try {
-    const idSet = new Set(ids);
-    const want = Int32Array.from(riverIndexes).sort();
-    // Any selected riverIndex inside [lo, hi]? Binary search for the first >= lo.
-    const hasIndexIn = (lo, hi) => {
-      let a = 0, b = want.length - 1, found = -1;
-      while (a <= b) {
-        const m = (a + b) >> 1;
-        if (want[m] >= lo) {
-          found = m;
-          b = m - 1;
-        } else a = m + 1;
-      }
-      return found !== -1 && want[found] <= hi;
-    };
+    const hasIndexIn = (lo, hi) => hi >= selLo && lo <= selHi;
 
     // Bytes off the wire, whatever phase asked for them. `phase` decides which bar the arriving
     // chunks drive, so the streaming callback does not have to know who called it.
     let fetched = 0;
     let phase = 'open';
     let onChunk = null;
+    // The file names itself in anything the user reads, so the same worker can say which of the
+    // two files it was opening without being told separately which dataset it is running.
+    const fileName = url.split('/').pop();
     const raw = await hp.asyncBufferFromUrl({url}).catch(() => null);
-    if (!raw) throw new Error('no geometry file for this Group (streams_<id>.geo.parquet)');
+    if (!raw) throw new Error(`no ${fileName} published for this Group`);
     const base = streamingBuffer(raw, url, n => {
       fetched += n;
       if (phase === 'read') onChunk?.(n);
@@ -134,12 +173,14 @@ self.onmessage = async e => {
       }
       row += n;
     }
-    console.info(`[geometry] ${picked.length}/${md.row_groups.length} row groups, ` +
-      `${keptRows.toLocaleString()}/${totalRows.toLocaleString()} rows to read` +
-      (keptRows > 0.5 * totalRows
-        ? ' — pruning is weak: published riverIndex order scatters a watershed across the file ' +
-        '(see docs/subsetting-geometry.md)'
-        : ''));
+    // Pruning is exact now rather than approximate. The file is written in riverIndex order and a
+    // subset is a contiguous riverIndex range, so the row groups that overlap it are consecutive
+    // and hold nothing but the selection and its immediate neighbours — a 413-reach watershed out
+    // of a 42,031-reach Group reads 2 row groups of 85. It used to be handed a scattered set of
+    // ids, which is what the old warning about weak pruning was about.
+    console.info(`[geometry] ${fileName}: ${picked.length}/${md.row_groups.length} row groups, ` +
+      `${keptRows.toLocaleString()}/${totalRows.toLocaleString()} rows to read for ` +
+      `riverIndex ${selLo.toLocaleString()}-${selHi.toLocaleString()}`);
     if (!picked.length) throw new Error('no row group contains any selected reach');
 
     // ---- batch the row groups so each buffered span stays under the ceiling ----
@@ -164,8 +205,18 @@ self.onmessage = async e => {
     // enough concurrent range requests for Chrome to abandon them with ERR_INSUFFICIENT_RESOURCES.
     // Buffering each batch's span up front makes it one sequential read, which object storage
     // also much prefers.
-    const cols = md.schema.slice(1).map(s => s.name);
-    const ri = cols.indexOf('riverId');
+    const schemaCols = topLevelColumns(md.schema);
+    const cols = schemaCols.map(s => s.name);
+    const ri = cols.indexOf('riverIndex');
+    if (ri < 0) throw new Error('the geometry file has no riverIndex column to select on');
+
+    // The source's own `geo` key, read now rather than at write time because its `encoding` is
+    // what says how to read the geometry column back.
+    const srcGeo = md.key_value_metadata?.find(k => k.key === 'geo')?.value;
+    const geo = srcGeo ? JSON.parse(srcGeo) : {version: '1.1.0', primary_column: 'geometry', columns: {}};
+    const primary = geo.primary_column || 'geometry';
+    const gcol = geo.columns[primary] || (geo.columns[primary] = {});
+    const nativeType = NATIVE_GEOMETRY_TYPES[String(gcol.encoding ?? '').toLowerCase()] ?? null;
     const kept = [];
 
     // Fetching and decoding are separate phases on separate bars, because they interleave: a batch
@@ -207,24 +258,27 @@ self.onmessage = async e => {
           utf8: false,
           rowStart: b.start, rowEnd: b.end,
           onComplete: rows => {
-            for (const r of rows) if (idSet.has(Number(r[ri]))) kept.push(r);
+            for (const r of rows) {
+              const ix = Number(r[ri]);
+              if (ix >= selLo && ix <= selHi) kept.push(r);
+            }
             resolve();
           },
         }).catch(reject);
       });
       decodedBytes += b.hi - b.lo;
       stage('decode', 100 * decodedBytes / spanBytes,
-        `${batchLabel}${fmt(kept.length)} of ${fmt(ids.length)} reaches matched`);
+        `${batchLabel}${fmt(kept.length)} of ${fmt(wanted)} reaches matched`);
     }
     phase = 'done-reading';
     // The wire is quiet from here, so whatever the fetch bar was showing is what it fetched.
     stage('geometry', 100, `${mb(Math.min(readBytes, spanBytes))} MB of geometry fetched`);
-    stage('decode', 100, `${fmt(kept.length)} of ${fmt(ids.length)} reaches matched`);
+    stage('decode', 100, `${fmt(kept.length)} of ${fmt(wanted)} reaches matched`);
 
-    const missing = ids.length - kept.length;
+    const missing = wanted - kept.length;
     if (missing > 0) {
       post('note', {
-        text: `${fmt(missing)} of ${fmt(ids.length)} selected reaches have no geometry in this file`,
+        text: `${fmt(missing)} of ${fmt(wanted)} selected reaches have no geometry in this file`,
         cls: 'error',
       });
     }
@@ -233,7 +287,7 @@ self.onmessage = async e => {
     // bbox/type scan and the WKB re-encode in one pass rather than two: both touch every
     // coordinate of every reach, and on a large subset that is the difference between one walk
     // over ~10M vertices and two.
-    const gi = cols.indexOf('geometry');
+    const gi = cols.indexOf(primary);
     const bbox = [Infinity, Infinity, -Infinity, -Infinity];
     const geomTypes = new Set();
     const wkb = new Array(kept.length);
@@ -241,7 +295,7 @@ self.onmessage = async e => {
     phase = 'encode';
     stage('encode', 0, `0 of ${fmt(kept.length)} reaches`);
     for (let i = 0; i < kept.length; i++) {
-      const g = kept[i][gi];
+      const g = asGeoJson(kept[i][gi], nativeType);
       if (g) {
         scanGeometry(g, bbox, geomTypes);
         wkb[i] = geojsonToWkb(g);
@@ -256,14 +310,11 @@ self.onmessage = async e => {
     }
     stage('encode', 100, `${fmt(kept.length)} reaches · ${[...geomTypes].sort().join(', ') || 'no geometry'}`);
 
-    // The source's own `geo` key, carried forward. It holds the CRS as PROJJSON, which is what
-    // keeps a 3857 mapping file readable as 3857 and a 4326 file readable as 4326 — GDAL and
-    // GeoPandas take the CRS from here, so neither the writer nor the app has to know which it is.
-    // Only the parts that the subset actually changes are overwritten below.
-    const srcGeo = md.key_value_metadata?.find(k => k.key === 'geo')?.value;
-    const geo = srcGeo ? JSON.parse(srcGeo) : {version: '1.1.0', primary_column: 'geometry', columns: {}};
-    const primary = geo.primary_column || 'geometry';
-    const gcol = geo.columns[primary] || (geo.columns[primary] = {});
+    // The source's `geo` block, parsed above, is carried forward: it holds the CRS as PROJJSON, so
+    // the export comes out in whatever CRS the source is in and GDAL and GeoPandas take it from
+    // here. Only the parts the subset actually changes are overwritten. `encoding` is one of them —
+    // the output is WKB whatever the source was, so a native-encoded source must not have its
+    // `"multilinestring"` copied onto a column of WKB blobs.
     gcol.encoding = 'WKB';
     // Taken from the rows actually written rather than hardcoded. A GeoParquet file that omits a
     // type it contains is one GDAL and GeoPandas both read happily and a strict validator rejects.
@@ -271,9 +322,11 @@ self.onmessage = async e => {
     // In the geometry column's own CRS, per the spec — degrees for a 4326 source, metres for 3857.
     if (isFinite(bbox[0])) gcol.bbox = bbox;
 
-    const typeOf = Object.fromEntries(md.schema.slice(1).map(s => [s.name, writerType(s)]));
+    const typeOf = Object.fromEntries(schemaCols.map(s => [s.name, writerType(s)]));
     const columnData = cols.map((name, i) => {
-      const type = typeOf[name];
+      // The geometry column is written as WKB blobs regardless of how it arrived, so its output
+      // type is BYTE_ARRAY even when the source node is a nested group with no `type` of its own.
+      const type = i === gi ? 'BYTE_ARRAY' : typeOf[name];
       if (i === gi) return {name, data: wkb, type};
       let data = kept.map(r => r[i]);
       // An int64 source column arrives as BigInt; an INT32 output column fed BigInt writes garbage.

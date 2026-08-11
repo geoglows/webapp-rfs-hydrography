@@ -35,11 +35,12 @@ const KNOWN = {
   areaM2: {label: 'Catchment area', role: 'measure', unit: 'm²', note: "this reach's own catchment"},
   Length: {label: 'Reach length', role: 'measure', unit: 'm'},
   TDXHydroRegion: {label: 'TDX-Hydro region', role: 'category'},
-  groupId: {label: 'Group', role: 'category', note: 'the metadata file a reach belongs to'},
+  groupId: {label: 'Group', role: 'category', note: 'the per-Group geometry file a reach belongs to'},
   riverId: {label: 'River ID', role: 'identity'},
   nextRiverId: {label: 'Next river ID', role: 'identity', note: 'downstream reach, -1 at a terminal'},
   outletRiverId: {label: 'Outlet river ID', role: 'identity', note: 'terminal reach of the watershed'},
-  riverIndex: {label: 'River index', role: 'identity', note: 'row order in the metadata table'},
+  riverIndex: {label: 'River index', role: 'identity', note: 'post-order rank — a watershed is one contiguous run of these'},
+  upstreamCount: {label: 'Upstream reaches', role: 'measure', note: 'how far back the run reaches, excluding this one'},
 };
 
 const ROLE_ORDER = {measure: 0, category: 1, identity: 2};
