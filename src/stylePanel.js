@@ -1,21 +1,3 @@
-/**
- * The styling panel: the attribute menu, the rules that use it, and the JSON that comes out.
- *
- * It edits a spec (streamStyle.js) and calls back; it never touches the map. That split is what
- * lets the same spec drive the live preview and the downloaded file without either being a
- * re-implementation of the other — what is on screen is compiled from the same object the file is
- * written from.
- *
- * Two habits keep the editing usable rather than merely possible:
- *
- * **Structure re-renders, values do not.** Adding a rule or a stop rebuilds the DOM; dragging a
- * colour or typing a width writes straight into the spec and repaints the map. A panel that
- * rebuilt itself on every keystroke would take the focus out of the field being typed into.
- *
- * **Zoom is chosen, never typed.** Every zoom control is a select over the half-step grid, so the
- * half-zoom rule holds by construction — there is no input that can express z6.3, and a loaded file
- * is snapped on the way in and told about it.
- */
 import {compact, orderVisibilityWarning} from './streamAttributes.js';
 import {
   BASE_LAYER_ID,
@@ -66,14 +48,6 @@ const zoomOptions = (withNone, noneLabel = '—') => [
 
 const num = v => (v === '' || v == null ? null : Number(v));
 
-/**
- * @param {object} o
- * @param {HTMLElement} o.mount        where the panel body is built
- * @param {() => void} o.onChange      the spec changed — recompile and repaint
- * @param {() => object|null} o.selection current subset, for the scope control and the file name
- * @param {(msg, cls) => void} o.status  the app's one status line
- * @param {string} o.pmtiles           the tile archive the exported style points at
- */
 export function createStylePanel({mount, onChange, selection, status, pmtiles}) {
   let spec = defaultSpec();
   let attributes = [];
@@ -216,13 +190,6 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
     return row;
   }
 
-  /**
-   * A condition list plus how its conditions combine.
-   *
-   * `owner` is the object holding both — a rule, or the global filter — so the AND/OR choice is
-   * stored with the conditions it governs rather than beside them. The toggle appears with the
-   * second condition, because that is when there is a choice to make.
-   */
   function conditionList(owner, {addLabel}) {
     const list = owner.conditions;
     const box = el('div', {class: 'conds'});
@@ -283,8 +250,6 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
       const row = el('div', {class: 'stop'}, [
         select(zoomOptions(false), s.zoom, e => {
           s.zoom = Number(e.target.value);
-          // Stops are compiled in ascending order regardless, but showing them out of order while
-          // they compile in order is the kind of small lie that costs someone ten minutes.
           restructured();
         }, 'stop-zoom'),
         el('input', {
@@ -402,8 +367,6 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
 
     const card = el('div', {class: `rule${rule.enabled === false ? ' off' : ''}${open ? ' open' : ''}`}, [head]);
     const summary = describeConditions(rule.conditions, byName(), rule.match) || 'every reach';
-    // The count span is always here, empty until the first idle tally — created on demand it would
-    // never exist to be filled, since the tally arrives after the render that would have made it.
     card.appendChild(el('div', {class: 'rule-summary'}, [
       el('span', {text: summary}),
       el('span', {class: 'rule-count', text: n == null ? '' : `≈${n.toLocaleString()} on screen`}),
@@ -546,17 +509,12 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
   }
 
   function render() {
-    // Rebuilding the body resets the scroll of the panel it lives in, which throws away where
-    // someone was reading. Everything else about a re-render is cheap; this is the one bit of
-    // state worth carrying across it.
     const scroll = mount.scrollTop;
     mount.replaceChildren();
     mount.appendChild(toolbar());
     mount.appendChild(attributeMenu());
 
     const shadow = shadowedRules(spec);
-    // The two sections answer two different questions — what is drawn at all, and how what is
-    // drawn looks — so they are named for the question rather than for the mechanism.
     const filterBox = el('section', {class: 'style-section'}, [
       el('h3', {}, [
         el('span', {text: 'Global Visibility Filters'}),

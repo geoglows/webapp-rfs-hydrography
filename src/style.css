@@ -1,10 +1,3 @@
-/* The panel stays dark over a light basemap: dark cards floating on Carto Positron keep the map
-   itself the brightest thing on screen, which is the point of a light basemap.
-
-   The four map colours are therefore picked to work against BOTH — a light grey map and a dark
-   navy panel — because the legend swatches sit on the panel and have to be the same colour as the
-   lines they describe. That rules out the pale blues and lilacs a dark-only map would use: they
-   disappear on Positron. These are the saturated mid-tones that survive both backgrounds. */
 :root {
     --bg: #0a0e17;
     --surface: #111827;
@@ -14,8 +7,6 @@
     --text-dim: #94a3b8;
     --accent: #38bdf8;
     --accent-dim: #0ea5e9;
-    /* The three map roles. Kept in step with COLORS in src/streamStyle.js, which is what the map
-       actually paints — these are the legend swatches that have to match it. */
     --stream: #4A90E2;
     --upstream: #7ED321;
     --selected: #F5A623;
@@ -149,9 +140,6 @@ button:disabled {
     border-color: var(--text-dim)
 }
 
-/* ── the selection box ─────────────────────────────────────────────────────
-   How many reaches, and where they drain to. No list of the ids themselves: the count answers the
-   question, and the file is one click away for anyone who wants to read them. */
 #selection-info {
     padding: 12px 20px;
     border-top: 1px solid var(--border);
@@ -581,6 +569,26 @@ button:disabled {
     margin-bottom: 7px
 }
 
+/* The basemap picker is the one control in the sidebar that is a choice rather than a switch, so it
+   gets the same small mono select the styling panel uses — that rule is scoped to #style-body and
+   this row is not in it. */
+#basemap-row select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    padding: 3px 4px;
+    cursor: pointer;
+    min-width: 0
+}
+
+#basemap-row select:focus {
+    outline: none;
+    border-color: var(--accent)
+}
+
 .swatch {
     width: 20px;
     height: 3px;
@@ -624,6 +632,16 @@ button:disabled {
 .legend-item label {
     cursor: pointer;
     flex: 1
+}
+
+/* A layer this dataset does not publish. */
+.legend-item.unavailable {
+    opacity: .45
+}
+
+.legend-item.unavailable input[type=checkbox],
+.legend-item.unavailable label {
+    cursor: not-allowed
 }
 
 /* ── the styling panel ─────────────────────────────────────────────────────

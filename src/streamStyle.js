@@ -1,41 +1,12 @@
-/**
- * The stream style: one small spec the panel edits, the map renders live, and the export publishes.
- *
- * Three decisions shape everything below.
- *
- * **Every style value is a list of zoom stops, and every stop sits on the half-zoom grid.** Colour,
- * width and opacity all take the same shape — `[{zoom, value}, ...]` — so a constant is just a
- * one-stop list and there is one editor, one validator and one compiler rather than three. Zooms
- * are snapped to `ZOOM_STEP` on the way in from every direction (the editor only offers grid
- * values, and a loaded file is snapped and told about it), so a ramp cannot end up with two stops
- * 0.03 apart.
- *
- * **A rule compiles to its own MapLibre layer, and the layers are mutually exclusive.** Rule *i*'s
- * filter is ANDed with the negation of every rule above it, and the base layer with the negation of
- * all of them, so each reach is drawn by exactly one layer. That is what makes a per-rule zoom
- * range a real visibility toggle: hiding a rule between z0 and z6 would mean nothing if the base
- * layer were still painting those same reaches underneath it.
- *
- * **The zoom ramp stays outermost.** MapLibre only accepts `["zoom"]` as the input of a top-level
- * `interpolate`/`step`, so the selection highlight and the selection-scope dimming are folded into
- * each *stop's output* rather than wrapped around the ramp. `ramp()` takes that output mapper,
- * which is why nothing here ever nests an interpolate inside a case.
- */
 import {MAX_ZOOM, MIN_ZOOM, ZOOM_STEP} from './config.js';
 import {compact} from './streamAttributes.js';
 
 export const SOURCE = 'streams';
 export const SOURCE_LAYER = 'streams';
-/** The base layer keeps the id the rest of the app queries for clicks, hovers and tests. */
 export const BASE_LAYER_ID = 'streams';
 export const RULE_LAYER_PREFIX = 'stream-rule-';
 export const ruleLayerId = i => `${RULE_LAYER_PREFIX}${i + 1}`;
 
-/**
- * The map's three line colours. They live here rather than in map.js because the default style is
- * built here and map.js renders it — one definition, and the legend swatches in style.css match
- * these by hand as they always did.
- */
 export const COLORS = {stream: '#4A90E2', upstream: '#7ED321', outlet: '#F5A623'};
 
 /** Upstream reaches keep the ~2.2x width bump the app has always drawn them with. */
@@ -84,13 +55,6 @@ export const newCondition = attr => ({
 const listValues = v => (Array.isArray(v) ? v : String(v ?? '').split(','))
   .map(s => String(s).trim()).filter(Boolean);
 
-/**
- * One condition as a MapLibre expression, or null if it is not usable yet.
- *
- * Every comparison is guarded by `["has", attr]`. A reach missing the attribute then matches no
- * condition about it — including `!=`, which is the reading that keeps a rule meaning "reaches
- * whose region is not X" rather than "reaches we know nothing about".
- */
 export function conditionExpr(c) {
   if (!c?.attribute || !c.op) return null;
   const get = ['get', c.attribute];
@@ -115,13 +79,6 @@ export const MATCH_MODES = [
   {mode: 'any', label: 'OR', hint: 'any one condition is enough'},
 ];
 
-/**
- * A condition list as one expression, combined with AND or OR.
- *
- * An empty list is `true` under either mode, not `false` under 'any': a rule with no conditions
- * means "everything left", which is how the base block and a fresh rule are both written. An `any`
- * of nothing being vacuously false would turn a half-built rule into an invisible one.
- */
 export const conditionsExpr = (list, match = 'all') => {
   const parts = (list ?? []).map(conditionExpr).filter(Boolean);
   if (!parts.length) return true;
@@ -138,13 +95,6 @@ const allOf = (...terms) => {
 
 const not = expr => (expr === true ? false : expr === false ? true : ['!', expr]);
 
-/**
- * "order ≥ 6 and area ≥ 7 G" — what a rule matches, in one line, for the panel.
- *
- * Numbers are abbreviated here and only here: this is the line you read to see what a rule is, and
- * a drainage-area threshold written out in full is ten digits nobody counts. The exact value is in
- * the condition's own input directly below it.
- */
 export function describeConditions(list, attrsByName = new Map(), match = 'all') {
   const v = (value, type) => (type === 'string' ? value : compact(Number(value)));
   const parts = (list ?? []).map(c => {
@@ -173,10 +123,6 @@ const coerce = (prop, v) => {
   return isFinite(n) ? clamp(n, lim.min, lim.max) : lim.min;
 };
 
-/**
- * Snap zooms to the grid, coerce values, drop duplicates (last wins) and sort ascending — which is
- * also exactly what MapLibre requires of `interpolate` stop inputs.
- */
 export function normalizeStops(prop, stops) {
   const byZoom = new Map();
   for (const s of stops ?? []) {
@@ -186,12 +132,6 @@ export function normalizeStops(prop, stops) {
   return [...byZoom.entries()].sort((a, b) => a[0] - b[0]).map(([zoom, value]) => ({zoom, value}));
 }
 
-/**
- * A property expression from stops, with `out` applied to each stop's value.
- *
- * `out` is where feature-dependent overrides go — the upstream highlight, the out-of-scope fade —
- * because they have to sit *inside* the ramp: MapLibre rejects a zoom ramp nested in a case.
- */
 function ramp(prop, stops, out = v => v) {
   const s = normalizeStops(prop, stops);
   if (!s.length) return out(coerce(prop, null));
@@ -232,13 +172,6 @@ const defaultBase = () => ({
   maxZoom: null,
 });
 
-/**
- * The style the app opens with is the style the app has always drawn.
- *
- * That matters more than it looks: the panel is an editor, not a redesign, so switching it on must
- * change nothing on the map until someone changes something. It also means the base block is a
- * worked example of every control the panel offers.
- */
 export const defaultSpec = () => ({
   version: SPEC_VERSION,
   name: 'RFS v3 default',
@@ -251,15 +184,6 @@ export const defaultSpec = () => ({
 export const cloneSpec = spec => JSON.parse(JSON.stringify(spec));
 
 // ── compile ──────────────────────────────────────────────────────────────────
-/**
- * "this reach is in the selection", as a filter over the tiles' own `riverIndex`.
- *
- * The subset is an index range (see data.js), and the range is the same two numbers whatever its
- * size — so a 234,000-reach watershed is this three-term expression and nothing else. It replaced a
- * `feature-state` highlight that cost one `setFeatureState` per reach and had to give up past
- * 400,000 of them; there is no longer any ceiling, and a reach is coloured the instant its tile
- * arrives rather than when the app gets around to writing state for it.
- */
 export const inRangeExpr = ({lo, hi}) => [
   'all',
   ['has', 'riverIndex'],
@@ -267,22 +191,12 @@ export const inRangeExpr = ({lo, hi}) => [
   ['<=', ['get', 'riverIndex'], hi],
 ];
 
-/**
- * The spec as MapLibre layers, bottom first.
- *
- * `highlight` folds the app's own selection colours in; the JSON export compiles without it, so
- * what is published is the cartography and not the state of one session's click. `scope: 'selection'`
- * fades everything the current subset does not contain, which is only meaningful while a selection
- * exists — with none, it compiles as 'all'.
- */
 export function compileLayers(spec, {highlight = false, selection = null} = {}) {
   const rules = (spec.rules ?? []).filter(r => r.enabled !== false);
   const globalFilter = conditionsExpr(spec.filter?.conditions, spec.filter?.match);
   const ruleFilters = rules.map(r => conditionsExpr(r.conditions, r.match));
 
   const scoped = spec.scope === 'selection' && selection != null;
-  // The outlet is the top of its own range, so one expression covers the subset and the reach it
-  // drains to — no separate `== riverId` term, which is what the feature-state version needed.
   const isUp = selection ? inRangeExpr(selection) : null;
   const on = highlight && isUp != null;
 
@@ -304,8 +218,6 @@ export function compileLayers(spec, {highlight = false, selection = null} = {}) 
         'line-opacity': ramp('opacity', style.opacity, opacityOut),
       },
     };
-    // A zoom range is only written when it restricts something: `minzoom: 0` on every layer is
-    // noise in a file someone is meant to read.
     const min = style.minZoom == null ? null : snapZoom(style.minZoom);
     const max = style.maxZoom == null ? null : snapZoom(style.maxZoom);
     if (min != null && min > MIN_ZOOM) l.minzoom = min;
@@ -330,10 +242,6 @@ export function compileLayers(spec, {highlight = false, selection = null} = {}) 
   return layers;
 }
 
-/**
- * Which rule, if any, claims every reach — anything below it is dead and the panel should say so
- * before someone spends ten minutes styling a rule that can never match.
- */
 export function shadowedRules(spec) {
   const out = new Set();
   let claimed = false;
@@ -346,13 +254,6 @@ export function shadowedRules(spec) {
 }
 
 // ── JSON in and out ──────────────────────────────────────────────────────────
-/**
- * The downloadable file: the spec as the panel holds it, plus the compiled MapLibre layers and the
- * source they read from, so it is both editable here and directly usable there.
- *
- * Deliberately no timestamp. Two runs of the same style produce byte-identical files, which is what
- * makes a diff between two styles worth looking at — the same reasoning as the sorted id export.
- */
 export function styleJson(spec, {pmtiles, selection = null} = {}) {
   const clean = cloneSpec(spec);
   clean.version = SPEC_VERSION;
@@ -385,8 +286,6 @@ export function styleJson(spec, {pmtiles, selection = null} = {}) {
           attribution: 'GEOGLOWS RFS v3',
         },
       },
-      // Compiled without the app's selection colours: what is published is the style, not the
-      // state of one session's click.
       layers: compileLayers(clean, {highlight: false}),
     },
   };
@@ -395,13 +294,6 @@ export function styleJson(spec, {pmtiles, selection = null} = {}) {
 
 const num = (v, fallback = null) => (isFinite(Number(v)) ? Number(v) : fallback);
 
-/**
- * Read a style file back in.
- *
- * Everything is repaired rather than rejected — an off-grid zoom is snapped, an unknown property is
- * dropped, a missing block falls back to the default — and every repair is reported, because a file
- * that silently loads as something slightly different is worse than one that says what it changed.
- */
 export function parseStyleJson(obj) {
   const notes = [];
   if (!obj || typeof obj !== 'object') throw new Error('not a JSON object');
@@ -476,14 +368,6 @@ export function parseStyleJson(obj) {
 }
 
 // ── presets ──────────────────────────────────────────────────────────────────
-/**
- * Four starting points, each of which is also a demonstration: the ramp preset shows per-rule zoom
- * ranges on half steps, the big-rivers preset shows the visibility filter, and the area preset shows a
- * measure other than order carrying the design.
- *
- * `needs` is checked against the attributes actually in the tiles, so a preset keyed to a field a
- * future tileset drops is never offered rather than silently drawing nothing.
- */
 export const PRESETS = [
   {
     id: 'default',

@@ -4,7 +4,49 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import {MAX_ZOOM, URLS} from './config.js';
 import {BASE_LAYER_ID, COLORS, compileLayers, defaultSpec, inRangeExpr} from './streamStyle.js';
 
-const CARTO_LIGHT = ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`);
+const TILE_SETS = {
+  positron: {
+    tiles: ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`),
+    maxzoom: 20,
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  },
+  imagery: {
+    tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+    maxzoom: 19,
+    attribution: 'Esri, Vantor, Earthstar Geographics, and the GIS User Community',
+  },
+  places: {
+    tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+    maxzoom: 19,
+    attribution: 'Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
+  },
+};
+
+export const BASEMAPS = [
+  {id: 'positron', label: 'Carto Positron', tileSets: ['positron']},
+  {id: 'imagery', label: 'Esri imagery', tileSets: ['imagery']},
+  {id: 'imagery-labels', label: 'Esri imagery + labels', tileSets: ['imagery', 'places']},
+];
+
+/** A tile set's source and layer share one id, because there is exactly one layer per set. */
+const tileSetId = key => `basemap-${key}`;
+
+let basemap = BASEMAPS[0].id;
+
+export const currentBasemap = () => basemap;
+
+const basemapById = id => BASEMAPS.find(b => b.id === id) ?? BASEMAPS[0];
+
+export function setBasemap(id) {
+  const pick = basemapById(id);
+  basemap = pick.id;
+  for (const key of Object.keys(TILE_SETS)) {
+    if (map?.getLayer(tileSetId(key))) {
+      map.setLayoutProperty(tileSetId(key), 'visibility',
+        pick.tileSets.includes(key) ? 'visible' : 'none');
+    }
+  }
+}
 
 const GROUP_SOURCE = 'group';
 const GROUP = '#8b5cf6';
@@ -12,29 +54,57 @@ let groupLayer = 'groups';
 let groupIdField = 'groupId';
 let hovered = [];
 
-
-async function readGroupArchive() {
+async function openArchive(protocol, url, label) {
+  const pmtiles = new PMTiles(url);
+  protocol.add(pmtiles);
   try {
-    const md = await new PMTiles(URLS.groupsPmtiles).getMetadata();
-    const layer = md?.vector_layers?.[0];
-    if (!layer) return;
-    groupLayer = layer.id;
-    const fields = Object.keys(layer.fields ?? {});
-    groupIdField = ['groupId', 'group_id', 'group', 'id'].find(f => fields.includes(f))
-      ?? fields[0] ?? groupIdField;
-    console.info(`[map] groups.pmtiles: layer "${groupLayer}", Group id from "${groupIdField}"`);
+    return (await pmtiles.getMetadata()) ?? {};
   } catch (err) {
-    console.warn(`[map] could not read groups.pmtiles metadata (${err.message}) — ` +
+    console.warn(`[map] ${label} is unavailable (${err.message}) — ${url} — ` +
+      'its layers are left off the map');
+    return null;
+  }
+}
+
+/** The Group layer's name and id field, read off the archive rather than assumed. */
+function readGroupArchive(md) {
+  const layer = md?.vector_layers?.[0];
+  if (!layer) {
+    return console.warn(`[map] groups.pmtiles declares no vector layers — ` +
       `assuming layer "${groupLayer}" keyed by "${groupIdField}"`);
   }
+  groupLayer = layer.id;
+  const fields = Object.keys(layer.fields ?? {});
+  groupIdField = ['groupId', 'group_id', 'group', 'id'].find(f => fields.includes(f))
+    ?? fields[0] ?? groupIdField;
+  console.info(`[map] groups.pmtiles: layer "${groupLayer}", Group id from "${groupIdField}"`);
+}
+
+function readCatchmentArchive(md) {
+  const ids = (md?.vector_layers ?? []).map(l => l.id);
+  if (!ids.length) return true;
+  if (!ids.includes(catchmentFillLayer)) {
+    const pick = ids.find(id => id !== catchmentLineLayer);
+    if (!pick) {
+      console.warn(`[map] catchments.pmtiles has no polygon layer (it has ${ids.join(', ')}) — ` +
+        'the catchments are left off the map');
+      return false;
+    }
+    console.warn(`[map] catchments.pmtiles has no "${catchmentFillLayer}" layer ` +
+      `(it has ${ids.join(', ')}) — drawing "${pick}"`);
+    catchmentFillLayer = pick;
+  }
+  catchmentLines = ids.includes(catchmentLineLayer);
+  return true;
 }
 
 /** Rule layers are inserted under this one, so the selected outlet is never painted over. */
 const TOP_LAYER = 'outlet';
 
 const CATCHMENT_SOURCE = 'catchments';
-const CATCHMENT_FILL_LAYER = 'catchments';
-const CATCHMENT_LINE_LAYER = 'catchment_lines';
+let catchmentFillLayer = 'catchments';
+const catchmentLineLayer = 'catchment_lines';
+let catchmentLines = true;
 const CATCHMENT = '#D55E00';
 const CATCHMENT_EDGE = '#000000';
 const CATCHMENT_OPACITY = 0.16;
@@ -50,7 +120,14 @@ export async function initMap() {
   archive = new PMTiles(URLS.streamsPmtiles);
   protocol.add(archive);
   maplibregl.addProtocol('pmtiles', protocol.tile);
-  await readGroupArchive();
+
+  const [groupsMd, catchmentsMd] = await Promise.all([
+    openArchive(protocol, URLS.groupsPmtiles, 'groups.pmtiles'),
+    openArchive(protocol, URLS.catchmentsPmtiles, 'catchments.pmtiles'),
+  ]);
+  const hasGroups = groupsMd !== null;
+  if (hasGroups) readGroupArchive(groupsMd);
+  const hasCatchments = catchmentsMd !== null && readCatchmentArchive(catchmentsMd);
 
   const streamLayers = compileLayers(defaultSpec(), {highlight: true});
   for (const l of streamLayers) applied.set(l.id, l);
@@ -62,10 +139,6 @@ export async function initMap() {
     center: [0, 20],
     zoom: 2,
     maxZoom: MAX_ZOOM,
-    // Flat, north-up, and no way out of it. This is a map for reading a network off, not a scene:
-    // a tilted view foreshortens the upstream lines it exists to show and puts the far half of the
-    // canvas at a scale the bar in the corner no longer describes. `maxPitch: 0` is the one that
-    // actually forces it — the handlers below are what stop a drag or a keypress from asking.
     pitch: 0,
     bearing: 0,
     maxPitch: 0,
@@ -75,62 +148,75 @@ export async function initMap() {
     style: {
       version: 8,
       sources: {
-        basemap: {
-          type: 'raster', tiles: CARTO_LIGHT, tileSize: 256, maxzoom: 20,
-          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-        },
-        [GROUP_SOURCE]: {
-          type: 'vector', url: `pmtiles://${URLS.groupsPmtiles}`,
-          promoteId: {[groupLayer]: groupIdField}, attribution: 'GEOGLOWS RFS v3',
-        },
-        [CATCHMENT_SOURCE]: {
-          type: 'vector', url: `pmtiles://${URLS.catchmentsPmtiles}`,
-          attribution: 'GEOGLOWS RFS v3',
-        },
+        ...Object.fromEntries(Object.entries(TILE_SETS).map(([key, t]) => [tileSetId(key), {
+          type: 'raster', tiles: t.tiles, tileSize: 256, maxzoom: t.maxzoom,
+          attribution: t.attribution,
+        }])),
+        ...(hasGroups ? {
+          [GROUP_SOURCE]: {
+            type: 'vector', url: `pmtiles://${URLS.groupsPmtiles}`,
+            promoteId: {[groupLayer]: groupIdField}, attribution: 'GEOGLOWS RFS v3',
+          },
+        } : {}),
+        ...(hasCatchments ? {
+          [CATCHMENT_SOURCE]: {
+            type: 'vector', url: `pmtiles://${URLS.catchmentsPmtiles}`,
+            attribution: 'GEOGLOWS RFS v3',
+          },
+        } : {}),
         streams: {
           type: 'vector', url: `pmtiles://${URLS.streamsPmtiles}`,
           promoteId: {streams: 'riverId'}, attribution: 'GEOGLOWS RFS v3',
         },
       },
       layers: [
-        {id: 'basemap', type: 'raster', source: 'basemap'},
-        {
-          id: 'catchment-fill', type: 'fill', source: CATCHMENT_SOURCE,
-          'source-layer': CATCHMENT_FILL_LAYER,
-          layout: {visibility: 'none'},
-          paint: {'fill-color': CATCHMENT, 'fill-opacity': CATCHMENT_OPACITY},
-        },
-        {
-          id: 'catchment-outlet', type: 'fill', source: CATCHMENT_SOURCE,
-          'source-layer': CATCHMENT_FILL_LAYER,
-          layout: {visibility: 'none'},
-          filter: ['==', ['get', 'riverId'], -1],
-          paint: {'fill-color': COLORS.outlet, 'fill-opacity': 0.35},
-        },
-        {
-          id: 'catchment-line', type: 'line', source: CATCHMENT_SOURCE,
-          'source-layer': CATCHMENT_LINE_LAYER,
-          layout: {visibility: 'none'},
-          paint: {
-            'line-color': CATCHMENT_EDGE,
-            'line-opacity': 0.55,
-            'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.9, 10, 1.6, 14, 2.6],
+        ...Object.keys(TILE_SETS).map(key => ({
+          id: tileSetId(key), type: 'raster', source: tileSetId(key),
+          layout: {
+            visibility: basemapById(basemap).tileSets.includes(key) ? 'visible' : 'none',
           },
-        },
-        {
-          id: 'group-fill', type: 'fill', source: GROUP_SOURCE, 'source-layer': groupLayer,
-          paint: {
-            'fill-color': GROUP,
-            'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.07, 0.045],
+        })),
+        ...(hasCatchments ? [
+          {
+            id: 'catchment-fill', type: 'fill', source: CATCHMENT_SOURCE,
+            'source-layer': catchmentFillLayer,
+            layout: {visibility: 'none'},
+            paint: {'fill-color': CATCHMENT, 'fill-opacity': CATCHMENT_OPACITY},
           },
-        },
-        {
-          id: 'group-line', type: 'line', source: GROUP_SOURCE, 'source-layer': groupLayer,
-          paint: {
-            'line-color': GROUP, 'line-opacity': 0.7,
-            'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 5, 2.2],
+          {
+            id: 'catchment-outlet', type: 'fill', source: CATCHMENT_SOURCE,
+            'source-layer': catchmentFillLayer,
+            layout: {visibility: 'none'},
+            filter: ['==', ['get', 'riverId'], -1],
+            paint: {'fill-color': COLORS.outlet, 'fill-opacity': 0.35},
           },
-        },
+          ...(catchmentLines ? [{
+            id: 'catchment-line', type: 'line', source: CATCHMENT_SOURCE,
+            'source-layer': catchmentLineLayer,
+            layout: {visibility: 'none'},
+            paint: {
+              'line-color': CATCHMENT_EDGE,
+              'line-opacity': 0.55,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.9, 10, 1.6, 14, 2.6],
+            },
+          }] : []),
+        ] : []),
+        ...(hasGroups ? [
+          {
+            id: 'group-fill', type: 'fill', source: GROUP_SOURCE, 'source-layer': groupLayer,
+            paint: {
+              'fill-color': GROUP,
+              'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.07, 0.045],
+            },
+          },
+          {
+            id: 'group-line', type: 'line', source: GROUP_SOURCE, 'source-layer': groupLayer,
+            paint: {
+              'line-color': GROUP, 'line-opacity': 0.7,
+              'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 5, 2.2],
+            },
+          },
+        ] : []),
         ...streamLayers,
         {
           id: TOP_LAYER, type: 'line', source: 'streams', 'source-layer': 'streams',
@@ -154,8 +240,23 @@ export async function initMap() {
   northUp();
   map.addControl(new maplibregl.NavigationControl({showCompass: false}), 'bottom-right');
   map.addControl(new maplibregl.ScaleControl({unit: 'metric'}), 'bottom-left');
-  await new Promise(resolve => map.on('load', resolve));
+  await ready(map);
   return map;
+}
+
+function ready(m) {
+  return new Promise(resolve => {
+    let styled = false;
+    m.on('style.load', () => {
+      styled = true;
+    });
+    m.once('load', resolve);
+    m.on('error', e => {
+      if (!styled) return;
+      console.warn(`[map] opening without waiting for "load" — ${e.error?.message ?? e.type}`);
+      resolve();
+    });
+  });
 }
 
 // ── the styled stream layers ─────────────────────────────────────────────────
@@ -206,6 +307,8 @@ export function setLayersVisible(ids, visible) {
 export const layersVisible = ids =>
   ids.some(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
 
+export const layersPresent = ids => ids.some(id => !!map?.getLayer(id));
+
 // ── the upstream highlight ───────────────────────────────────────────────────
 let selection = null;
 
@@ -224,16 +327,6 @@ export function clearHighlight(onStyle) {
 }
 
 // ── the catchments ───────────────────────────────────────────────────────────
-/**
- * The catchments follow the selection the same way the streams do — the same range expression,
- * pushed as two paint properties whenever the selection changes.
- *
- * This is where the leaf tiles have to catch up. They carry `riverId` but not yet `riverIndex`, and
- * `inRangeExpr` guards on `["has", "riverIndex"]`, so the expression is simply false against
- * today's archive and the catchments stay the neutral wash. Adding `riverIndex` alongside the
- * `riverId` already there — the same field the aggregate levels need for their outlet reach — turns
- * this on at every zoom with no change here.
- */
 function syncCatchmentHighlight() {
   if (!map?.getLayer('catchment-fill')) return;
   const up = selection ? inRangeExpr(selection) : null;
@@ -244,15 +337,8 @@ function syncCatchmentHighlight() {
   map.setFilter('catchment-outlet', ['==', ['get', 'riverId'], selection?.outlet ?? -1]);
 }
 
-/**
- * Light up the hovered Groups, and put out whatever was lit before.
- *
- * Feature state on a vector source is addressed by source *and* source-layer, which is why this
- * lives here rather than at the call site: the layer name was read off the archive at boot and is
- * nobody else's business. Passing an empty array is how the hover is cleared.
- */
 export function setGroupHover(ids) {
-  if (!map) return;
+  if (!map?.getSource(GROUP_SOURCE)) return;
   const target = id => ({source: GROUP_SOURCE, sourceLayer: groupLayer, id});
   for (const id of hovered) map.setFeatureState(target(id), {hover: false});
   for (const id of ids) map.setFeatureState(target(id), {hover: true});

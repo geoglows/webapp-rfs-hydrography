@@ -1,15 +1,3 @@
-/**
- * The sidebar's two output surfaces: one status line, and the download progress block.
- *
- * This replaces a running log. The log printed every step of every lookup, which meant the one
- * line that mattered — an error, or how far a download had got — scrolled away under lines that
- * only confirmed things had gone normally. `status()` overwrites rather than appends, so what is
- * on screen is the current state instead of a transcript of how it was reached.
- *
- * Detail that used to be logged is not lost, it is placed where it belongs: counts and ids in the
- * selection box, phase and bytes in the progress block, and the full story of a failure in the
- * console, where it can be read without occupying the panel.
- */
 const $ = id => document.getElementById(id);
 
 const statusEl = $('status');
@@ -30,18 +18,6 @@ export const clock = s => {
   return m ? `${m}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${s.toFixed(s < 10 ? 1 : 0)}s`;
 };
 
-/**
- * The status block: one line, or a few.
- *
- * It is normally one line, and `status()` below is the whole of what most callers want. The
- * exception is a run that produces more than one result — the GeoParquet export saves a streams
- * file and then a catchments file — where one line overwriting the other would throw away the
- * first result to announce the second. Each line keeps its own class, so a saved file stays green
- * next to a warning that is not.
- *
- * `cls` is '' | 'info' | 'success' | 'error', and the block takes the strongest of them: an error
- * anywhere is what the panel should look like from across the room.
- */
 const RANK = {'': 0, info: 1, success: 2, error: 3};
 
 export function statusLines(lines) {
@@ -64,23 +40,8 @@ export const clearStatus = () => status('');
 
 let hideTimer = null;
 
-/**
- * The progress block.
- *
- * Percentages only ever move forward within a run: a bar that goes backwards reads as a bug even
- * when the underlying estimate genuinely improved, so `set` clamps to the high-water mark and
- * `begin` is the only thing that resets it.
- */
 let high = 0;
 
-/**
- * The last N updates, newest last.
- *
- * Sampling the DOM to find out whether the bar really moved is a race — a local read can finish
- * inside one polling interval and the interesting states are gone before anything looks. This
- * records them as they happen, which is what the test suite asserts against and what makes a
- * "did the bar sit still?" question answerable after the fact.
- */
 const HISTORY = 200;
 export const progressHistory = [];
 const record = (pct, phase, detail, indeterminate = false) => {
@@ -117,11 +78,6 @@ export const progress = {
     }
   },
 
-  /**
-   * A phase whose length cannot be known — the synchronous parquet encode is one call that either
-   * has returned or has not. A striped bar that is honestly indeterminate beats a percentage
-   * invented to keep it moving.
-   */
   indeterminate(phase, detail = '') {
     clearTimeout(hideTimer);
     record(high, phase, detail, true);
@@ -159,25 +115,6 @@ export const progress = {
   },
 };
 
-/**
- * The staged progress block, for a run with more than one thing going on.
- *
- * One bar is the right shape for a lookup: it is one fetch and one decode, and a single number says
- * how far along it is. A GeoParquet export is not that — it fetches an index, prunes row groups,
- * streams tens of megabytes, decodes them, re-encodes every geometry and writes a file, and a single
- * percentage flattens all of it into a number that appears to stall for seconds at a time with no
- * way to tell which part is slow.
- *
- * So the export gets a bar per *kind* of work — bytes off the wire, and work done on them — and a
- * line per phase under each. The whole plan is declared before the run starts, so the steps that
- * have not happened yet are on screen greyed out rather than appearing one at a time: what is
- * coming is as informative as what is done, and a phase that is slow is obvious because it is the
- * one line that is moving.
- *
- * Group percentages are a weighted mean of their phases, weighted by what each phase actually costs
- * rather than by counting phases equally — writing the file is not a quarter of the processing work
- * and a bar that says it is would be lying by construction.
- */
 export const stageHistory = [];
 const STAGE_HISTORY = 400;
 
@@ -208,8 +145,6 @@ function paintPhase(key) {
   n.row.className = `stage-line ${s.state}${s.indeterminate ? ' indeterminate' : ''}`;
   n.mark.textContent = MARK[s.state] ?? '·';
   n.detail.textContent = s.detail ?? '';
-  // A finished line's detail is ellipsised to keep the block narrow; the title is where the rest
-  // of it goes, rather than nowhere.
   n.row.title = s.detail ? `${n.label}: ${s.detail}` : n.label;
   n.fill.style.width = `${s.state === 'done' ? 100 : s.pct}%`;
 }
@@ -230,10 +165,6 @@ function paintGroup(groupKey) {
 }
 
 export const stages = {
-  /**
-   * Declare the run. `groups` are the bars; `phases` are the lines, each naming its group and what
-   * share of it it is worth.
-   */
   begin({groups, phases}) {
     plan = {groups, phases};
     phaseState = new Map(phases.map(p => [p.key, {pct: 0, state: 'pending', detail: ''}]));
@@ -268,10 +199,6 @@ export const stages = {
     }
   },
 
-  /**
-   * Move one phase. Percentages only go forward within a phase, for the same reason the single bar
-   * clamps: a number that goes backwards reads as a bug even when the estimate genuinely improved.
-   */
   set(key, {pct, detail, state, indeterminate} = {}) {
     const s = phaseState.get(key);
     if (!s) return;

@@ -1,28 +1,7 @@
-/**
- * What the stream tiles actually carry — read from the archive, not written down here.
- *
- * A PMTiles archive keeps a TileJSON-ish metadata blob: `vector_layers[].fields` names every
- * attribute and its type, and tippecanoe's `tilestats` adds the range each one was seen over and,
- * for strings, the distinct values. That is exactly the menu the style panel needs — attribute,
- * type, and the numbers a sensible threshold sits between — so the panel asks the data rather than
- * carrying a copy of the schema that goes stale the next time the tiles are rebuilt.
- *
- * It costs one range read of a few KB, and it shares the header and directory cache with the
- * protocol the map already renders through (see map.js), so nothing is fetched twice.
- *
- * The table below is presentation only: a label, a unit, and which of three kinds an attribute is.
- * Anything not in it still appears — with its raw name and whatever tilestats knows — because the
- * point of reading the archive is that a field added upstream shows up here without a code change.
- */
 import {firstZoomForOrder, TILE_ORDER_LADDER} from './config.js';
 
 export const SOURCE_LAYER = 'streams';
 
-/**
- * `measure` is what you style by, `category` is what you filter by, `identity` names one reach and
- * is nearly always the wrong thing to draw with. The panel orders the menu that way, so the first
- * thing on screen is the attribute someone actually wants.
- */
 const KNOWN = {
   strahlerOrder: {
     label: 'Strahler order', role: 'measure',
@@ -59,14 +38,6 @@ export const compact = v => {
   return String(Number(v.toPrecision(3)));
 };
 
-/**
- * A first threshold worth offering when someone adds a rule from the menu.
- *
- * Areas and lengths span six orders of magnitude, so their midpoint is geometric rather than
- * arithmetic — the arithmetic midpoint of 8 M and 5.4 T is a number no reach is anywhere near.
- * Rounded to one significant digit, because a suggestion that reads as 4.6e10 invites editing
- * rather than trying.
- */
 export function suggestedThreshold({type, min, max, values}) {
   if (type === 'string') return values?.[0] ?? '';
   if (min == null || max == null) return 0;
@@ -93,13 +64,9 @@ function build(fields, stats) {
       label: known.label ?? name,
       unit: known.unit ?? '',
       note: known.note ?? '',
-      // An attribute nobody has described is more likely to be a new measure than a new id, and
-      // guessing "measure" only costs it a place higher in the menu.
       role: known.role ?? (type === 'string' ? 'category' : 'measure'),
       min: s?.min ?? null,
       max: s?.max ?? null,
-      // tilestats lists up to 1000 distinct values; the strings are a real category list, the
-      // numbers are only a sample of what was seen and are not presented as choices.
       values: type === 'string' ? (s?.values ?? []).map(String).sort() : [],
     };
     attr.suggested = suggestedThreshold(attr);
@@ -107,12 +74,6 @@ function build(fields, stats) {
   }).sort((a, b) => (ROLE_ORDER[a.role] - ROLE_ORDER[b.role]) || a.label.localeCompare(b.label));
 }
 
-/**
- * Read the archive's metadata and return the attribute menu.
- *
- * Never throws: a missing or unreadable metadata blob means the panel opens with no menu and a line
- * saying so, which is a far better outcome than an init failure that takes the whole map with it.
- */
 export async function loadStreamAttributes(archive) {
   try {
     const md = await archive.getMetadata();
@@ -132,10 +93,6 @@ export async function loadStreamAttributes(archive) {
   }
 }
 
-/**
- * The one caveat worth saying out loud in the panel: a rule keyed to Strahler order below the zoom
- * its reaches enter the pyramid draws nothing, and that is the tiles, not the rule.
- */
 export function orderVisibilityWarning(condition, minZoom) {
   if (condition?.attribute !== 'strahlerOrder') return null;
   const order = Number(condition.value);
