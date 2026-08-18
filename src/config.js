@@ -21,6 +21,9 @@ export const URLS = {
   streamsPmtiles: urls.streamsPmtiles(),
   catchmentsPmtiles: `${group(0)}/catchments.pmtiles`,
   groupsPmtiles: `${group(0)}/groups.pmtiles`,
+  // HydroBASINS sits beside the hydrography rather than inside a group: it is reference geography,
+  // not something the v3 pipeline partitions.
+  basinsPmtiles: `${V3_BASE}/hydrobasins_level2.pmtiles`,
   streams: g => `${group(g)}/streams_${g}.geo.parquet`,
   catchments: g => `${group(g)}/catchments_${g}.geo.parquet`,
 };

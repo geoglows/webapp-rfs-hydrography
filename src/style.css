@@ -11,6 +11,7 @@
     --upstream: #7ED321;
     --selected: #F5A623;
     --group: #8b5cf6;
+    --basin: #14b8a6;
     --catchment: #D55E00;
     --success: #10b981;
     --danger: #ef4444;
@@ -620,6 +621,66 @@ button:disabled {
     border-radius: 2px;
     border: 1px solid var(--group);
     background: rgba(139, 92, 246, .18)
+}
+
+.swatch.poly.basin {
+    border-color: var(--basin);
+    background: rgba(20, 184, 166, .18)
+}
+
+/* ── the region popup ──────────────────────────────────────────────────────
+   What a click on bare map reports: the id of every region polygon under it. MapLibre's popup
+   ships light, so the whole chrome — bubble, tip and close button — is restated here. */
+.region-popup .maplibregl-popup-content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 9px 11px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .5)
+}
+
+.region-popup .maplibregl-popup-tip {
+    border-top-color: var(--surface);
+    border-bottom-color: var(--surface)
+}
+
+.region-popup .maplibregl-popup-close-button {
+    color: var(--text-dim);
+    font-size: 15px;
+    padding: 0 5px;
+    background: none
+}
+
+.region-popup .maplibregl-popup-close-button:hover {
+    color: var(--text);
+    background: none
+}
+
+.region-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: nowrap
+}
+
+.region-row .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    flex-shrink: 0
+}
+
+.region-row .k {
+    color: var(--text-dim)
+}
+
+.region-row .v {
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    margin-left: auto
 }
 
 .legend-item input[type=checkbox] {

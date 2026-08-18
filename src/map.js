@@ -52,7 +52,30 @@ const GROUP_SOURCE = 'group';
 const GROUP = '#8b5cf6';
 let groupLayer = 'groups';
 let groupIdField = 'groupId';
-let hovered = [];
+
+const BASIN_SOURCE = 'basins';
+const BASIN = '#14b8a6';
+let basinLayer = 'hydrobasins_level2';
+let basinIdField = 'HYBAS_ID';
+
+/**
+ * The polygon regions a click reports and a hover highlights, outermost first.
+ *
+ * The layer name and id field of each archive are read at boot, so these are getters rather than
+ * values — by the time anything calls them the archive has been opened.
+ */
+const REGIONS = [
+  {
+    key: 'basin', label: 'HydroBASINS L2', color: BASIN, source: BASIN_SOURCE, visible: false,
+    layer: 'basin-fill', sourceLayer: () => basinLayer, idField: () => basinIdField,
+  },
+  {
+    key: 'group', label: 'Group', color: GROUP, source: GROUP_SOURCE,
+    layer: 'group-fill', sourceLayer: () => groupLayer, idField: () => groupIdField,
+  },
+];
+
+const hovered = {basin: [], group: []};
 
 async function openArchive(protocol, url, label) {
   const pmtiles = new PMTiles(url);
@@ -66,18 +89,18 @@ async function openArchive(protocol, url, label) {
   }
 }
 
-/** The Group layer's name and id field, read off the archive rather than assumed. */
-function readGroupArchive(md) {
+/** A region archive's layer name and id field, read off the archive rather than assumed. */
+function readRegionArchive(md, file, candidates, fallback) {
   const layer = md?.vector_layers?.[0];
   if (!layer) {
-    return console.warn(`[map] groups.pmtiles declares no vector layers — ` +
-      `assuming layer "${groupLayer}" keyed by "${groupIdField}"`);
+    console.warn(`[map] ${file} declares no vector layers — ` +
+      `assuming layer "${fallback.layer}" keyed by "${fallback.idField}"`);
+    return fallback;
   }
-  groupLayer = layer.id;
   const fields = Object.keys(layer.fields ?? {});
-  groupIdField = ['groupId', 'group_id', 'group', 'id'].find(f => fields.includes(f))
-    ?? fields[0] ?? groupIdField;
-  console.info(`[map] groups.pmtiles: layer "${groupLayer}", Group id from "${groupIdField}"`);
+  const idField = candidates.find(f => fields.includes(f)) ?? fields[0] ?? fallback.idField;
+  console.info(`[map] ${file}: layer "${layer.id}", region id from "${idField}"`);
+  return {layer: layer.id, idField};
 }
 
 function readCatchmentArchive(md) {
@@ -121,12 +144,22 @@ export async function initMap() {
   protocol.add(archive);
   maplibregl.addProtocol('pmtiles', protocol.tile);
 
-  const [groupsMd, catchmentsMd] = await Promise.all([
+  const [groupsMd, catchmentsMd, basinsMd] = await Promise.all([
     openArchive(protocol, URLS.groupsPmtiles, 'groups.pmtiles'),
     openArchive(protocol, URLS.catchmentsPmtiles, 'catchments.pmtiles'),
+    openArchive(protocol, URLS.basinsPmtiles, 'hydrobasins_level2.pmtiles'),
   ]);
   const hasGroups = groupsMd !== null;
-  if (hasGroups) readGroupArchive(groupsMd);
+  if (hasGroups) {
+    ({layer: groupLayer, idField: groupIdField} = readRegionArchive(groupsMd, 'groups.pmtiles',
+      ['groupId', 'group_id', 'group', 'id'], {layer: groupLayer, idField: groupIdField}));
+  }
+  const hasBasins = basinsMd !== null;
+  if (hasBasins) {
+    ({layer: basinLayer, idField: basinIdField} = readRegionArchive(basinsMd,
+      'hydrobasins_level2.pmtiles', ['HYBAS_ID', 'hybas_id', 'HYBAS_ID2', 'id'],
+      {layer: basinLayer, idField: basinIdField}));
+  }
   const hasCatchments = catchmentsMd !== null && readCatchmentArchive(catchmentsMd);
 
   const streamLayers = compileLayers(defaultSpec(), {highlight: true});
@@ -158,6 +191,12 @@ export async function initMap() {
             promoteId: {[groupLayer]: groupIdField}, attribution: 'GEOGLOWS RFS v3',
           },
         } : {}),
+        ...(hasBasins ? {
+          [BASIN_SOURCE]: {
+            type: 'vector', url: `pmtiles://${URLS.basinsPmtiles}`,
+            promoteId: {[basinLayer]: basinIdField}, attribution: 'HydroSHEDS HydroBASINS',
+          },
+        } : {}),
         ...(hasCatchments ? {
           [CATCHMENT_SOURCE]: {
             type: 'vector', url: `pmtiles://${URLS.catchmentsPmtiles}`,
@@ -176,6 +215,24 @@ export async function initMap() {
             visibility: basemapById(basemap).tileSets.includes(key) ? 'visible' : 'none',
           },
         })),
+        ...(hasBasins ? [
+          {
+            id: 'basin-fill', type: 'fill', source: BASIN_SOURCE, 'source-layer': basinLayer,
+            layout: {visibility: 'none'},
+            paint: {
+              'fill-color': BASIN,
+              'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.12, 0.05],
+            },
+          },
+          {
+            id: 'basin-line', type: 'line', source: BASIN_SOURCE, 'source-layer': basinLayer,
+            layout: {visibility: 'none'},
+            paint: {
+              'line-color': BASIN, 'line-opacity': 0.75,
+              'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 4, 1.6],
+            },
+          },
+        ] : []),
         ...(hasCatchments ? [
           {
             id: 'catchment-fill', type: 'fill', source: CATCHMENT_SOURCE,
@@ -337,10 +394,35 @@ function syncCatchmentHighlight() {
   map.setFilter('catchment-outlet', ['==', ['get', 'riverId'], selection?.outlet ?? -1]);
 }
 
-export function setGroupHover(ids) {
-  if (!map?.getSource(GROUP_SOURCE)) return;
-  const target = id => ({source: GROUP_SOURCE, sourceLayer: groupLayer, id});
-  for (const id of hovered) map.setFeatureState(target(id), {hover: false});
-  for (const id of ids) map.setFeatureState(target(id), {hover: true});
-  hovered = ids;
+// ── the region polygons: Groups and HydroBASINS ──────────────────────────────
+/** Only layers that are on the map and switched on answer a query, so a hidden region is inert. */
+const drawnRegions = () => REGIONS.filter(r => map?.getLayer(r.layer));
+
+/** The regions under `point` and the id of each, outermost first — what a click reports. */
+export function regionsAt(point) {
+  const layers = drawnRegions().map(r => r.layer);
+  if (!layers.length) return [];
+  const hits = map.queryRenderedFeatures(point, {layers});
+  return REGIONS.map(r => {
+    const f = hits.find(h => h.layer.id === r.layer);
+    const id = f?.properties?.[r.idField()] ?? f?.id;
+    return id == null ? null : {label: r.label, id, color: r.color};
+  }).filter(Boolean);
+}
+
+/** Highlight every region under `point`; pass null to drop the highlight. */
+export function hoverRegions(point) {
+  const hits = point && drawnRegions().length
+    ? map.queryRenderedFeatures(point, {layers: drawnRegions().map(r => r.layer)})
+    : [];
+  for (const r of REGIONS) {
+    if (!map?.getSource(r.source)) continue;
+    const ids = [...new Set(hits.filter(h => h.layer.id === r.layer)
+      .map(h => h.id).filter(id => id != null))];
+    if (ids.join() === hovered[r.key].join()) continue;
+    const target = id => ({source: r.source, sourceLayer: r.sourceLayer(), id});
+    for (const id of hovered[r.key]) map.setFeatureState(target(id), {hover: false});
+    for (const id of ids) map.setFeatureState(target(id), {hover: true});
+    hovered[r.key] = ids;
+  }
 }

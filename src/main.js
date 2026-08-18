@@ -1,7 +1,8 @@
 import './style.css';
+import maplibregl from 'maplibre-gl';
 import {URLS, V3_BASE} from './config.js';
 import {upstreamRange} from './data.js';
-import {applyHighlight, applyStreamStyle, archive, BASEMAPS, clearHighlight, currentBasemap, currentSelection, initMap, layersPresent, layersVisible, map, setBasemap, setGroupHover, setLayersVisible, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
+import {applyHighlight, applyStreamStyle, archive, BASEMAPS, clearHighlight, currentBasemap, currentSelection, hoverRegions, initMap, layersPresent, layersVisible, map, regionsAt, setBasemap, setLayersVisible, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
 import {compileLayers} from './streamStyle.js';
 import {loadStreamAttributes} from './streamAttributes.js';
 import {createStylePanel} from './stylePanel.js';
@@ -9,8 +10,8 @@ import {downloadGeometry} from './geometry.js';
 import {clearStatus, fmt, progress, progressHistory, stageHistory, stages, status} from './ui.js';
 
 let sel = null;
-let hoverGroupIds = [];
 let stylePanel = null;
+let regionPopup = null;
 
 const $ = id => document.getElementById(id);
 
@@ -116,34 +117,55 @@ function refreshCounts() {
 }
 
 // ── map interactions ─────────────────────────────────────────────────────────
-/** The Group boundary layer, if this dataset published one. Set from the map at boot. */
-let groupHoverLayers = [];
-
-function clearGroupHover() {
-  setGroupHover([]);
-  hoverGroupIds = [];
-}
-
 function onMapHover(e) {
   const stream = map.queryRenderedFeatures(e.point, {layers: streamLayerIds()})[0];
   map.getCanvas().style.cursor = stream ? 'pointer' : '';
+  hoverRegions(e.point);
+}
 
-  const ids = groupHoverLayers.length
-    ? [...new Set(map.queryRenderedFeatures(e.point, {layers: groupHoverLayers})
-      .map(f => f.id).filter(id => id != null))]
-    : [];
-  if (ids.join() !== hoverGroupIds.join()) {
-    setGroupHover(ids);
-    hoverGroupIds = ids;
+/**
+ * The id of every region polygon under the click — HydroBASINS level 2, and the Group.
+ *
+ * Built as nodes rather than a string: the ids come out of the tiles, so nothing from the data
+ * gets to be markup.
+ */
+function showRegions(e) {
+  regionPopup?.remove();
+  regionPopup = null;
+  const regions = regionsAt(e.point);
+  if (!regions.length) return;
+  const body = document.createElement('div');
+  body.className = 'region-popup-body';
+  for (const r of regions) {
+    const row = document.createElement('div');
+    row.className = 'region-row';
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = r.color;
+    const k = document.createElement('span');
+    k.className = 'k';
+    k.textContent = r.label;
+    const v = document.createElement('span');
+    v.className = 'v';
+    v.textContent = String(r.id);
+    row.append(dot, k, v);
+    body.append(row);
   }
+  regionPopup = new maplibregl.Popup({className: 'region-popup', maxWidth: '280px'})
+    .setLngLat(e.lngLat)
+    .setDOMContent(body)
+    .addTo(map);
 }
 
 function onMapClick(e) {
   const hits = map.queryRenderedFeatures(
     [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]], {layers: streamLayerIds()});
-  if (!hits.length) return;
+  // A click that misses the network is asking about the region it landed in instead.
+  if (!hits.length) return showRegions(e);
   const p = hits[0].properties;
   if (p.riverId == null) return;
+  regionPopup?.remove();
+  regionPopup = null;
   // The feature is the selection: outlet, index, upstream count and Group all come off it.
   selectOutlet(p);
 }
@@ -208,9 +230,8 @@ let ready = false;
     const m = await initMap();
     m.on('click', onMapClick);
     m.on('mousemove', onMapHover);
-    m.on('mouseout', clearGroupHover);
+    m.on('mouseout', () => hoverRegions(null));
     syncLayerBoxes();
-    groupHoverLayers = layersPresent(['group-fill']) ? ['group-fill'] : [];
     basemapSelect.value = currentBasemap();
 
     stylePanel = createStylePanel({
