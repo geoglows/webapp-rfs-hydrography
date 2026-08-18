@@ -21,6 +21,6 @@ jobs:
   deploy:
     uses: geoglows/apps.geoglows/.github/workflows/deploy-app.yml@main
     with:
-      app_path: /rfs-hydrography-explorer
+      app_path: /rfs-hydrography
       ref: ${{ inputs.ref }}
     secrets: inherit
