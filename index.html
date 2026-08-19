@@ -5,18 +5,19 @@
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>RFS Hydrography Explorer</title>
   <meta content="Explore the GEOGLOWS River Forecast System v3 hydrography. Click a river, take everything upstream of it, export the reaches and their catchments as GeoParquet, and style the network by attribute and zoom." name="description"/>
-  <link href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1520'/%3E%3Cg fill='none' stroke='%234A90E2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 28.5V18' stroke-width='4'/%3E%3Cpath d='M16 18L8.5 11.5M16 18L23.5 11.5' stroke-width='2.9'/%3E%3Cpath d='M8.5 11.5L4.5 6M8.5 11.5L10.5 4.5M23.5 11.5L21.5 4.5M23.5 11.5L27.5 6' stroke-width='1.9'/%3E%3C/g%3E%3C/svg%3E" rel="icon"/>
-  <link href="https://fonts.googleapis.com" rel="preconnect">
-  <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1520'/%3E%3Cg fill='none' stroke='%234A90E2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M30 20L25 18.7L16.5 15.2' stroke-width='3.8'/%3E%3Cpath d='M16.5 15.2L11 9.5L7 6.5' stroke-width='2.6'/%3E%3Cpath d='M16.5 15.2L12 21.5L9.5 25.5' stroke-width='2.6'/%3E%3Cpath d='M11 9.5L4.5 9.5' stroke-width='1.7'/%3E%3Cpath d='M12 21.5L5.5 19.5' stroke-width='1.7'/%3E%3Cpath d='M25 18.7L22.8 12' stroke-width='1.7'/%3E%3Cpath d='M21.3 17L19 22.5' stroke-width='1.7'/%3E%3C/g%3E%3C/svg%3E" rel="icon"/>
 </head>
 <body>
-<div id="map"></div>
-
 <div id="sidebar">
   <header>
-    <h1>RFS HYDROGRAPHY EXPLORER</h1>
-    <p>Click a river. Everything upstream is selected, then export it as GeoParquet.</p>
+    <a href="/" title="GEOGLOWS apps">
+      <img alt="GEOGLOWS" height="60" src="https://cdn.apps.geoglows.org/static/images/geoglows-logo-nav.webp" width="354"/>
+    </a>
+    <h1>RFS Hydrography Explorer</h1>
+    <p class="hint">Click a river. Everything upstream is selected, then export it as GeoParquet.</p>
+    <div class="row">
+      <button class="btn icon" id="btn-theme" title="Toggle light / dark theme"></button>
+    </div>
   </header>
   <div id="controls">
     <h2>Layers</h2>
@@ -48,40 +49,42 @@
     <div class="legend-item"><span class="swatch outlet"></span> Selected outlet</div>
 
     <div class="btn-row">
-      <button disabled id="btn-geoparquet"
+      <button class="btn primary" disabled id="btn-geoparquet"
               title="Saves two GeoParquet files: the selected reaches, then the catchment polygon each of them drains.">
         Download GeoParquet
       </button>
-      <button id="btn-clear">Clear</button>
+      <button class="btn" id="btn-clear">Clear</button>
     </div>
   </div>
 
   <div id="selection-info"></div>
 
-  <div id="progress">
-    <div id="progress-head">
-      <span id="progress-phase"></span>
-      <span id="progress-pct"></span>
-    </div>
-    <div id="progress-bar">
-      <div id="progress-fill"></div>
-    </div>
-    <div id="progress-detail"></div>
-  </div>
-  <div id="stages"></div>
-  <div id="status"></div>
-</div>
-
-<div id="panel-right">
-  <div class="card" id="style-card">
+  <div id="style-card">
     <h2>
       <span>Stream styling</span>
       <span id="style-zoom" title="Current map zoom — every stop below sits on a half-zoom step">z2.0</span>
-      <button id="style-collapse" title="Collapse the styling panel">&#9662;</button>
+      <button class="btn sm" id="style-collapse" title="Collapse the styling panel"></button>
     </h2>
     <div id="style-body"></div>
   </div>
+
+  <div id="sidebar-foot">
+    <div id="progress">
+      <div id="progress-head">
+        <span id="progress-phase"></span>
+        <span id="progress-pct"></span>
+      </div>
+      <div id="progress-bar">
+        <div id="progress-fill"></div>
+      </div>
+      <div id="progress-detail"></div>
+    </div>
+    <div id="stages"></div>
+    <div id="status"></div>
+  </div>
 </div>
+
+<div id="map"></div>
 <script src="/src/main.js" type="module"></script>
 </body>
 </html>

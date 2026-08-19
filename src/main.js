@@ -8,6 +8,7 @@ import {loadStreamAttributes} from './streamAttributes.js';
 import {createStylePanel} from './stylePanel.js';
 import {downloadGeometry} from './geometry.js';
 import {clearStatus, fmt, progress, progressHistory, stageHistory, stages, status} from './ui.js';
+import {heroIcon} from './icons.js';
 
 let sel = null;
 let stylePanel = null;
@@ -180,14 +181,55 @@ $('btn-geoparquet').addEventListener('click', () => {
     onSettled: () => setBusy(false),
   });
 });
+// ── theme ────────────────────────────────────────────────────────────────────
+// The RFS v3 app remembers its light/dark choice under this key. Both apps are served from
+// apps.geoglows.org, so that is one localStorage — switching theme in either is switching it for
+// both, which is the point of matching the palette in the first place.
+const THEME_KEY = 'rfs-theme';
+const isTheme = v => v === 'light' || v === 'dark';
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  // The button shows what a click would switch to, the way RFS v3's does: a sun to go light.
+  $('btn-theme').replaceChildren(heroIcon(theme === 'dark' ? 'sun' : 'moon'));
+}
+
+const storedTheme = () => {
+  try {
+    return localStorage.getItem(THEME_KEY);
+  } catch {
+    return null;
+  }
+};
+
+let theme = isTheme(storedTheme()) ? storedTheme() : 'dark';
+applyTheme(theme);
+
+$('btn-theme').addEventListener('click', () => {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch { /* private mode — the choice holds for this tab and is not remembered */ }
+  applyTheme(theme);
+});
+
+// The other app, in another tab, flipping the same key. Only fires for other documents, so this
+// cannot loop with the click handler above.
+window.addEventListener('storage', e => {
+  if (e.key !== THEME_KEY || !isTheme(e.newValue) || e.newValue === theme) return;
+  theme = e.newValue;
+  applyTheme(theme);
+});
+
+// ── the styling section ──────────────────────────────────────────────────────
 function setStyleCollapsed(collapsed) {
-  $('panel-right').classList.toggle('style-collapsed', collapsed);
-  $('style-collapse').textContent = collapsed ? '▸' : '▾';
+  $('sidebar').classList.toggle('style-collapsed', collapsed);
+  $('style-collapse').replaceChildren(heroIcon(collapsed ? 'chevron-right' : 'chevron-down'));
   $('style-collapse').title = collapsed ? 'Expand the styling panel' : 'Collapse the styling panel';
 }
 
 $('style-collapse').addEventListener('click', () =>
-  setStyleCollapsed(!$('panel-right').classList.contains('style-collapsed')));
+  setStyleCollapsed(!$('sidebar').classList.contains('style-collapsed')));
 setStyleCollapsed(true);
 
 const layerBoxes = () => [...$('layer-toggles').querySelectorAll('input[type=checkbox]')];

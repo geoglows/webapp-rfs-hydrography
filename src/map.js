@@ -20,10 +20,31 @@ const TILE_SETS = {
     maxzoom: 19,
     attribution: 'Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
   },
+  topo: {
+    tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],
+    maxzoom: 19,
+    attribution: 'Esri, HERE, Garmin, USGS, NGA, FAO, NOAA, &copy; OpenStreetMap contributors, ' +
+      'and the GIS User Community',
+  },
+  osm: {
+    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+    maxzoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  },
+  // OpenTopoMap renders from its own servers and asks that its tiles not be hammered; it stops at
+  // z17, which is well past the zooms this app is read at.
+  opentopo: {
+    tiles: ['a', 'b', 'c'].map(s => `https://${s}.tile.opentopomap.org/{z}/{x}/{y}.png`),
+    maxzoom: 17,
+    attribution: '&copy; OpenStreetMap contributors, SRTM | &copy; OpenTopoMap (CC-BY-SA)',
+  },
 };
 
 export const BASEMAPS = [
   {id: 'positron', label: 'Carto Positron', tileSets: ['positron']},
+  {id: 'osm', label: 'OpenStreetMap', tileSets: ['osm']},
+  {id: 'opentopo', label: 'OpenTopoMap', tileSets: ['opentopo']},
+  {id: 'topo', label: 'Esri topographic', tileSets: ['topo']},
   {id: 'imagery', label: 'Esri imagery', tileSets: ['imagery']},
   {id: 'imagery-labels', label: 'Esri imagery + labels', tileSets: ['imagery', 'places']},
 ];
