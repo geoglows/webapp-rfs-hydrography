@@ -7,7 +7,19 @@ export const BASE_LAYER_ID = 'streams';
 export const RULE_LAYER_PREFIX = 'stream-rule-';
 export const ruleLayerId = i => `${RULE_LAYER_PREFIX}${i + 1}`;
 
-export const COLORS = {stream: '#4A90E2', upstream: '#7ED321', outlet: '#F5A623'};
+export const COLORS = {
+  /**
+   * Amber against the blue of the network, because that pair survives every common form of colour
+   * blindness — the one distinction on this map that has to hold is selected from not selected.
+   * Both ends stay on the yellow side of orange: a red-leaning dark end is the one thing that
+   * would put the pair back into a red/blue clash.
+   * Everything a selection is made of is one hue at two depths: `upstream` is the area it covers,
+   * `outlet` is the reaches that bound it — the one it drains to and the inlets it stops above.
+   * The multi-select collection is drawn in the same two, because a collected watershed is the
+   * same kind of thing as a selected one; the map tells them apart by which is on it at the time.
+   */
+  stream: '#4A90E2', upstream: '#F5A623', outlet: '#B45309',
+};
 
 /** Upstream reaches keep the ~2.2x width bump the app has always drawn them with. */
 const UP_WIDTH_SCALE = 2.2;
@@ -145,7 +157,7 @@ export const SPEC_FORMAT = 'rfs-hydrography-explorer/stream-style';
 
 const stop = (zoom, value) => ({zoom: snapZoom(zoom), value});
 
-/** New rules cycle these — saturated mid-tones, all of which hold up on the Positron basemap. */
+/** New rules cycle these — saturated mid-tones, all of which hold up on the light gray basemap. */
 export const RULE_PALETTE = ['#1d4ed8', '#0e7490', '#15803d', '#b45309', '#be123c', '#7c3aed'];
 
 let ruleSeq = 0;
@@ -184,12 +196,25 @@ export const defaultSpec = () => ({
 export const cloneSpec = spec => JSON.parse(JSON.stringify(spec));
 
 // ── compile ──────────────────────────────────────────────────────────────────
-export const inRangeExpr = ({lo, hi}) => [
+const spanExpr = ({lo, hi}) => [
   'all',
   ['has', 'riverIndex'],
   ['>=', ['get', 'riverIndex'], lo],
   ['<=', ['get', 'riverIndex'], hi],
 ];
+
+/**
+ * Every reach a selection holds. A watershed is one contiguous run of riverIndex, and passes as
+ * `{lo, hi}`; an AOI is that run with the run above each of its inlets cut out, and passes the runs
+ * it has left as `spans`. One run compiles to the same expression it always did.
+ */
+export const inRangeExpr = sel => {
+  const spans = sel.spans ?? [{lo: sel.lo, hi: sel.hi}];
+  // A selection with no runs left holds no reaches. aoi.js will not build one — it refuses to make
+  // the outlet its own inlet — but the empty list must not read as "everything" if one ever arrives.
+  if (!spans.length) return ['==', ['get', 'riverIndex'], -1];
+  return spans.length === 1 ? spanExpr(spans[0]) : ['any', ...spans.map(spanExpr)];
+};
 
 export function compileLayers(spec, {highlight = false, selection = null} = {}) {
   const rules = (spec.rules ?? []).filter(r => r.enabled !== false);

@@ -24,6 +24,17 @@ const KNOWN = {
 
 const ROLE_ORDER = {measure: 0, category: 1, identity: 2};
 
+/** What the app knows about one field name, with a sane fallback for a field it has never seen. */
+export const fieldInfo = (name, type = 'number') => ({
+  label: name,
+  unit: '',
+  note: '',
+  role: type === 'string' ? 'category' : 'measure',
+  ...(KNOWN[name] ?? {}),
+});
+
+export const roleRank = role => ROLE_ORDER[role] ?? 3;
+
 /** Human-scale numbers for a menu: 1.2 M, 8.4 k, 0.75 — never 5384105885696. */
 export const compact = v => {
   if (v == null || !isFinite(v)) return '—';

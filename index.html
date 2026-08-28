@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>RFS Hydrography Explorer</title>
-  <meta content="Explore the GEOGLOWS River Forecast System v3 hydrography. Click a river, take everything upstream of it, export the reaches and their catchments as GeoParquet, and style the network by attribute and zoom." name="description"/>
+  <meta content="Explore the GEOGLOWS River Forecast System v3 hydrography." name="description"/>
   <link href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1520'/%3E%3Cg fill='none' stroke='%234A90E2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M30 20L25 18.7L16.5 15.2' stroke-width='3.8'/%3E%3Cpath d='M16.5 15.2L11 9.5L7 6.5' stroke-width='2.6'/%3E%3Cpath d='M16.5 15.2L12 21.5L9.5 25.5' stroke-width='2.6'/%3E%3Cpath d='M11 9.5L4.5 9.5' stroke-width='1.7'/%3E%3Cpath d='M12 21.5L5.5 19.5' stroke-width='1.7'/%3E%3Cpath d='M25 18.7L22.8 12' stroke-width='1.7'/%3E%3Cpath d='M21.3 17L19 22.5' stroke-width='1.7'/%3E%3C/g%3E%3C/svg%3E" rel="icon"/>
 </head>
 <body>
@@ -14,54 +14,80 @@
       <img alt="GEOGLOWS" height="60" src="https://cdn.apps.geoglows.org/static/images/geoglows-logo-nav.webp" width="354"/>
     </a>
     <h1>RFS Hydrography Explorer</h1>
-    <p class="hint">Click a river. Everything upstream is selected, then export it as GeoParquet.</p>
     <div class="row">
       <button class="btn icon" id="btn-theme" title="Toggle light / dark theme"></button>
+      <button class="btn icon" id="btn-settings" title="Settings"></button>
     </div>
   </header>
-  <div id="controls">
-    <h2>Layers</h2>
-    <div class="legend-item" id="basemap-row">
-      <label for="basemap-select">Basemap</label>
-      <select id="basemap-select"
-              title="Positron is the light cartographic base the stream colours were picked against. The imagery bases are aerial photography, for checking a line against the water on the ground — with Esri boundaries and place names over it, or bare so nothing is drawn over the banks."></select>
-    </div>
-    <div id="layer-toggles">
-      <div class="legend-item">
-        <input data-layers="group-fill group-line" id="toggle-group" type="checkbox"/>
-        <label for="toggle-group">Group boundaries</label>
-        <span class="swatch poly"></span>
-      </div>
-      <div class="legend-item">
-        <input data-layers="basin-fill basin-line" id="toggle-basins" type="checkbox"/>
-        <label for="toggle-basins" title="HydroBASINS level 2 — the 62 continental drainage regions. Click inside one to read its HYBAS_ID.">HydroBASINS
-          level 2</label>
-        <span class="swatch poly basin"></span>
-      </div>
-      <div class="legend-item">
-        <input data-layers="catchment-fill catchment-outlet catchment-line" id="toggle-catchments" type="checkbox"/>
-        <label for="toggle-catchments" title="The land draining to each reach. Merged into basins below z10; one polygon per reach, and coloured with the selection, from z10 up.">Catchments</label>
-        <span class="swatch catchment"></span>
-      </div>
-    </div>
-    <div class="legend-item"><span class="swatch stream"></span> Stream network</div>
-    <div class="legend-item"><span class="swatch upstream"></span> Upstream of selection</div>
-    <div class="legend-item"><span class="swatch outlet"></span> Selected outlet</div>
+  <div id="layers-card">
+    <h2>
+      <span class="title">Layers</span>
+      <button class="btn sm" id="layers-collapse" title="Collapse the layer list"></button>
+    </h2>
+    <!-- rows built by initLayerPicker() in src/mapControls.js -->
+    <div id="layers-body"></div>
+  </div>
 
-    <div class="btn-row">
-      <button class="btn primary" disabled id="btn-geoparquet"
-              title="Saves two GeoParquet files: the selected reaches, then the catchment polygon each of them drains.">
-        Download GeoParquet
+  <div id="watershed-card">
+    <h2>
+      <button class="btn sm mode" id="watershed-mode"
+              title="One click selects every reach that drains to the reach it lands on. Press W.">
+        On
       </button>
-      <button class="btn" id="btn-clear">Clear</button>
+      <span class="title">Watershed selector</span>
+      <span id="watershed-count" title="Streams in the current selection"></span>
+      <button class="btn sm" id="watershed-collapse" title="Collapse the watershed selector"></button>
+    </h2>
+    <div id="watershed-body">
+      <div id="selection-info"></div>
+      <div class="btn-row">
+        <button class="btn primary" disabled id="btn-geoparquet"
+                title="Saves two GeoParquet files: the selected reaches, then the catchment polygon each of them drains.">
+          Download GeoParquet
+        </button>
+        <button class="btn" id="btn-clear">Clear</button>
+      </div>
     </div>
   </div>
 
-  <div id="selection-info"></div>
+  <div id="aoi-card">
+    <h2>
+      <button class="btn sm mode" id="aoi-mode"
+              title="Cut an area of interest out of a watershed: click its outlet, then click each inlet to drop it and everything that drains into it. Press A.">
+        Off
+      </button>
+      <span class="title">AOI subsetter</span>
+      <span id="aoi-count" title="Inlets trimmed off the area of interest">0</span>
+      <button class="btn sm" id="aoi-collapse" title="Collapse the AOI subsetter"></button>
+    </h2>
+    <div id="aoi-body"></div>
+  </div>
+
+  <div id="picks-card">
+    <h2>
+      <button class="btn sm mode" id="picks-mode"
+              title="Collect a watershed outlet on every click, instead of selecting one at a time. Shift-click a river to collect one without leaving the method you are in, or press M.">
+        Off
+      </button>
+      <span class="title">Multi-select</span>
+      <span id="picks-count" title="Watershed outlets collected">0</span>
+      <button class="btn sm" id="picks-collapse" title="Collapse the multi-select list"></button>
+    </h2>
+    <div id="picks-body"></div>
+  </div>
+
+  <div id="river-card">
+    <h2>
+      <span class="title">River attributes</span>
+      <span id="river-card-id" title="The riverId of the reach you clicked"></span>
+      <button class="btn sm" id="river-collapse" title="Collapse the river attributes panel"></button>
+    </h2>
+    <div id="river-body"></div>
+  </div>
 
   <div id="style-card">
     <h2>
-      <span>Stream styling</span>
+      <span class="title">Stream styling</span>
       <span id="style-zoom" title="Current map zoom — every stop below sits on a half-zoom step">z2.0</span>
       <button class="btn sm" id="style-collapse" title="Collapse the styling panel"></button>
     </h2>
@@ -85,6 +111,42 @@
 </div>
 
 <div id="map"></div>
+
+<!-- MAP OVERLAYS · the basemap picker and the legend float over the map, the way RFS v3 floats its
+     own. The picker is one button, and its menu opens to the left of it, into the map. -->
+<div id="map-controls" class="col map-overlay">
+  <div class="anchor">
+    <button aria-expanded="false" aria-haspopup="true" class="btn map" id="basemap-btn"
+            title="Basemap"></button>
+    <div class="card menu hidden" id="basemap-menu" role="menu"></div>
+  </div>
+</div>
+
+<div class="card map-overlay" id="legend-overlay">
+  <h2>Legend</h2>
+  <div id="legend-items">
+    <div class="legend-item"><span class="swatch stream"></span> Stream network</div>
+    <div class="legend-item"><span class="swatch upstream"></span> Selected streams</div>
+    <div class="legend-item"><span class="swatch outlet"></span> Selected Inlet/Outlet</div>
+  </div>
+</div>
+
+<div class="backdrop hidden" id="settings-modal">
+  <div aria-labelledby="settings-modal-title" aria-modal="true" class="card modal" role="dialog">
+    <div class="modal-head">
+      <h3 id="settings-modal-title">Settings</h3>
+      <button aria-label="Close" class="btn sm" data-close="settings-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <h4>Display</h4>
+      <label class="row">
+        <input id="set-legend" type="checkbox"/>
+        <span>Show the map legend</span>
+      </label>
+    </div>
+  </div>
+</div>
+
 <script src="/src/main.js" type="module"></script>
 </body>
 </html>

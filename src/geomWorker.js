@@ -89,10 +89,16 @@ function rowGroupSpan(rg) {
 }
 
 self.onmessage = async e => {
-  const {url, lo: selLo, hi: selHi} = e.data;
-  const wanted = selHi - selLo + 1;
+  const {url, lo: selLo, hi: selHi, spans} = e.data;
+  // A watershed is one run of riverIndex; an AOI is the same run with the runs above its inlets cut
+  // out. Both arrive as a list of runs, and everything below works off the list.
+  const selSpans = spans?.length ? spans : [{lo: selLo, hi: selHi}];
+  const wanted = selSpans.reduce((n, s) => n + s.hi - s.lo + 1, 0);
   try {
-    const hasIndexIn = (lo, hi) => hi >= selLo && lo <= selHi;
+    // A row group is worth reading if any run reaches into it; the holes an AOI leaves are why this
+    // asks each run rather than only the outer bounds.
+    const hasIndexIn = (lo, hi) => selSpans.some(s => hi >= s.lo && lo <= s.hi);
+    const inSelection = ix => selSpans.some(s => ix >= s.lo && ix <= s.hi);
 
     let fetched = 0;
     let phase = 'open';
@@ -128,7 +134,8 @@ self.onmessage = async e => {
     }
     console.info(`[geometry] ${fileName}: ${picked.length}/${md.row_groups.length} row groups, ` +
       `${keptRows.toLocaleString()}/${totalRows.toLocaleString()} rows to read for ` +
-      `riverIndex ${selLo.toLocaleString()}-${selHi.toLocaleString()}`);
+      `riverIndex ${selLo.toLocaleString()}-${selHi.toLocaleString()}` +
+      (selSpans.length > 1 ? ` in ${selSpans.length} runs` : ''));
     if (!picked.length) throw new Error('no row group contains any selected reach');
 
     // ---- batch the row groups so each buffered span stays under the ceiling ----
@@ -189,8 +196,7 @@ self.onmessage = async e => {
           rowStart: b.start, rowEnd: b.end,
           onComplete: rows => {
             for (const r of rows) {
-              const ix = Number(r[ri]);
-              if (ix >= selLo && ix <= selHi) kept.push(r);
+              if (inSelection(Number(r[ri]))) kept.push(r);
             }
             resolve();
           },

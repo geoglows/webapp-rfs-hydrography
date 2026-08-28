@@ -20,6 +20,8 @@
     --text-faint: #64748b;
     --accent: #38bdf8;
     --accent-dim: #0ea5e9;
+    /* The accent at a wash, for a control that is outlined in it answering a hover. */
+    --accent-soft: rgba(56, 189, 248, .14);
     --on-accent: #04121b;
     --success: #10b981;
     --success-bright: #34d399;
@@ -40,11 +42,17 @@
        on the map actually is. --stream is overwritten at runtime by the styling panel's base
        colour, which is why the legend follows a restyle. */
     --stream: #4A90E2;
-    --upstream: #7ED321;
-    --selected: #F5A623;
+    --upstream: #F5A623;
+    --selected: #B45309;
     --group: #8b5cf6;
     --basin: #14b8a6;
     --catchment: #D55E00;
+    /* Everything a selection is made of — its area, the reaches that bound it, and the collected
+       watersheds beside it — is the one orange at two depths, so it reads as one thing against the
+       blue of the network. --selected is the dark end, which is a map colour and too dark to be
+       type; --selected-text is the same colour of intent at a weight that holds at 11px, and is
+       one of the pair that has to be themed. */
+    --selected-text: #FBBF24;
 }
 
 /* Light theme — set by the header's sun/moon button, and by whatever the RFS v3 app last stored. */
@@ -59,6 +67,7 @@
     --text-faint: #64748b;
     --accent: #0284c7;
     --accent-dim: #0369a1;
+    --accent-soft: rgba(2, 132, 199, .12);
     --on-accent: #ffffff;
     --success: #059669;
     --success-bright: #10b981;
@@ -69,6 +78,7 @@
     --warn-text: #b45309;
     --swatch-ring: rgba(15, 23, 42, .2);
     --shadow-color: 100, 116, 139;
+    --selected-text: #B45309;
 }
 
 *, *::before, *::after {
@@ -149,6 +159,18 @@ body {
     gap: var(--gap, 8px)
 }
 
+.col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap, 8px)
+}
+
+/* !important because the classes that lay a thing out set their own display — .btn is a flex box,
+   .col a flex column — and would otherwise outrank this. */
+.hidden, [hidden] {
+    display: none !important
+}
+
 .hint {
     font-size: 13.5px;
     color: var(--text-dim);
@@ -157,15 +179,9 @@ body {
 
 /* ── sections ──────────────────────────────────────────────────────────────
    The column is a stack of them, spaced and ruled the way RFS v3 spaces and rules its panel. */
-#controls {
-    padding: 13px 18px;
-    flex-shrink: 0
-}
-
 .btn-row {
     display: flex;
-    gap: 8px;
-    margin-top: 12px
+    gap: 8px
 }
 
 /* ── Controls · one look for every clickable thing that isn't a link ───────
@@ -194,7 +210,7 @@ body {
 }
 
 /* The square ones: an icon in the middle and no label, sized by --size. */
-.btn.icon, .btn.sm {
+.btn.icon, .btn.sm, .btn.map {
     width: var(--size);
     height: var(--size);
     padding: 0;
@@ -211,6 +227,15 @@ body {
     --size: 26px;
     --icon: 16px;
     color: var(--text-dim)
+}
+
+/* Floating over the map, so unlike the column's buttons it carries a surface and a shadow of its
+   own — there is nothing behind it but tiles. */
+.btn.map {
+    --size: 44px;
+    --icon: 26px;
+    background: var(--surface);
+    box-shadow: 0 2px 10px rgba(var(--shadow-color), .4)
 }
 
 .btn.primary {
@@ -277,8 +302,7 @@ input[type=checkbox] {
 }
 
 #selection-info {
-    padding: 12px 18px;
-    border-top: 1px solid var(--border);
+    margin-bottom: 11px;
     font-size: 13px;
     color: var(--text-dim);
     font-family: var(--mono);
@@ -293,7 +317,7 @@ input[type=checkbox] {
 }
 
 #selection-info .outlet {
-    color: var(--selected);
+    color: var(--selected-text);
     font-weight: 600
 }
 
@@ -304,6 +328,12 @@ input[type=checkbox] {
 
 #selection-info .k {
     color: var(--text-faint)
+}
+
+/* What the AOI's inlets took off — the same red the inlets themselves are drawn in. */
+#selection-info .trimmed {
+    color: var(--selected-text);
+    font-weight: 600
 }
 
 /* ── the download progress block ───────────────────────────────────────────
@@ -639,7 +669,7 @@ input[type=checkbox] {
 }
 
 /* The eyebrow over a block of controls — the same one RFS v3 puts over each of its sections. */
-#style-card h2, #controls h2 {
+#style-card h2, #legend-overlay h2 {
     font-size: 12px;
     font-weight: 600;
     color: var(--text-dim);
@@ -649,33 +679,179 @@ input[type=checkbox] {
     font-family: var(--mono)
 }
 
+/* ── what floats over the map ──────────────────────────────────────────────
+   The layer and basemap pickers at the top right, and the legend in the bottom corner. RFS v3
+   stacks the same two buttons in the same corner, and this app answers them the same way, so a
+   reader who has used one already knows where these are.
+
+   .map-overlay is the shared part — out of the page's flow, above the map's own canvas and
+   controls — and each of them says only where it sits. They are positioned against the viewport,
+   not the map, so the legend has to step past the column itself. */
+.map-overlay {
+    position: absolute;
+    z-index: 10
+}
+
+#map-controls {
+    top: 12px;
+    right: 12px
+}
+
+/* Clear of the credits, which keep the bottom of this corner: MapLibre draws them on a 20px line
+   with a 10px margin under it, so 38px leaves the card a little air over the top of them. */
+#legend-overlay {
+    bottom: 38px;
+    right: 12px;
+    max-width: 240px;
+    padding: 10px 13px
+}
+
+#legend-overlay h2 {
+    margin-bottom: 8px
+}
+
+/* ── the settings dialog ───────────────────────────────────────────────────
+   RFS v3's modal: the page dims and blurs behind one card in the middle of it. The backdrop is the
+   click target for "outside the dialog", which is why it is the element and not a pseudo-element. */
+.backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(2, 6, 16, .6);
+    backdrop-filter: blur(2px);
+    display: grid;
+    place-items: center
+}
+
+.modal {
+    width: min(560px, calc(100vw - 40px));
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column
+}
+
+.modal-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    border-radius: var(--radius) var(--radius) 0 0
+}
+
+.modal-head h3 {
+    font-size: 16px;
+    font-weight: 700
+}
+
+.modal-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 6px 16px 14px
+}
+
+/* Each heading is the break between two runs of settings; the first has nothing above it to be
+   separated from. */
+.modal-body h4 {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin: 20px 0 6px
+}
+
+.modal-body h4:first-child {
+    margin-top: 12px
+}
+
+/* A checkbox and the sentence it switches, the whole row clickable because it is a label. */
+.modal-body label.row {
+    padding: 6px 0;
+    font-size: 14.5px;
+    cursor: pointer
+}
+
+/* The box keeps its size when the sentence beside it wraps. */
+.modal-body input[type=checkbox] {
+    flex: 0 0 auto
+}
+
+/* The surface every floating thing is drawn on. */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 28px rgba(var(--shadow-color), .5)
+}
+
+/* ── the picker menus ──────────────────────────────────────────────────────
+   Each button hangs its own menu off itself, opening to the left: the buttons are at the right edge
+   of the window, and the room is all on the other side. */
+.anchor {
+    position: relative
+}
+
+.menu {
+    position: absolute;
+    top: 0;
+    right: calc(100% + 8px);
+    min-width: 200px;
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px
+}
+
+/* One row of a menu — a layer to switch on, a basemap to switch to. Cut from .btn, then flattened:
+   inside a card it is the row that has to read as pressable, not its border. */
+.opt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 14.5px;
+    font-weight: 400;
+    text-align: left;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: .12s
+}
+
+.opt:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--bg)
+}
+
+/* The basemap in use. Only the basemap menu has one — the layer rows say on and off with the box. */
+.opt.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    font-weight: 600
+}
+
+/* Spaced by the list rather than by the rows, because the rows for the optional layers are in the
+   list whether they are showing or not, and a margin on a hidden row would leave a hole. */
+#legend-items {
+    display: flex;
+    flex-direction: column;
+    gap: 7px
+}
+
 .legend-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
     font-size: 14px;
     color: var(--text-dim)
-}
-
-.legend-item:last-child {
-    margin-bottom: 0
-}
-
-/* The toggles are a group inside a longer list, so the row that ends the group keeps the gap: the
-   rule above would otherwise close it up against the first legend row that follows. */
-#layer-toggles .legend-item:last-child {
-    margin-bottom: 7px
-}
-
-/* The basemap picker is the one control up here that is a choice rather than a switch. It shares
-   its line with its label — the list is short enough — and otherwise it is the app's ordinary
-   field: same background, border and hover as every select in the styling editor below. */
-#basemap-row select {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: 14px;
-    padding: 5px 7px
 }
 
 .swatch {
@@ -771,28 +947,6 @@ input[type=checkbox] {
     margin-left: auto
 }
 
-.legend-item input[type=checkbox] {
-    width: 14px;
-    height: 14px;
-    cursor: pointer;
-    accent-color: var(--accent)
-}
-
-.legend-item label {
-    cursor: pointer;
-    flex: 1
-}
-
-/* A layer this dataset does not publish. */
-.legend-item.unavailable {
-    opacity: .45
-}
-
-.legend-item.unavailable input[type=checkbox],
-.legend-item.unavailable label {
-    cursor: not-allowed
-}
-
 /* ── the styling panel ─────────────────────────────────────────────────────
    The one section of the column that holds a form. It takes whatever height the switches above and
    the export block below leave, and scrolls inside itself, so a style with a dozen rules never
@@ -819,7 +973,7 @@ input[type=checkbox] {
     flex-shrink: 0
 }
 
-#style-card h2 span:first-child {
+#style-card h2 .title {
     flex: 1
 }
 
@@ -828,6 +982,488 @@ input[type=checkbox] {
     font-variant-numeric: tabular-nums;
     letter-spacing: 0;
     text-transform: none
+}
+
+/* ── the AOI subsetter ─────────────────────────────────────────────────────
+   The same folding card as multi-select below it, and for the same reason: the mode switch in its
+   heading is how the feature is found. It is a shorter list — an outlet and its inlets — so it is
+   laid out with the pick rows rather than with a set of its own. */
+/* Never squeezed: this card is a short list with a button under it, and a column that ran out of
+   room used to cut the Clear off the bottom of it. The inlet list scrolls on its own instead. */
+#aoi-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 0 0 auto;
+    padding: 13px 18px 10px;
+    border-top: 1px solid var(--border)
+}
+
+#aoi-card h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+#aoi-card h2 .title {
+    flex: 1
+}
+
+/* How many inlets are cutting into the AOI — the number that says how far it is from the whole
+   watershed the outlet would have selected. */
+#aoi-count {
+    color: var(--selected-text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13px;
+    font-weight: 700
+}
+
+#aoi-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.5
+}
+
+/* The outlet the inlets are cut out of, over the list of them. */
+.aoi-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 2px;
+    border-top: 1px solid var(--border-soft)
+}
+
+.aoi-k {
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 9.5px
+}
+
+.aoi-outlet {
+    color: var(--selected-text);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600
+}
+
+/* An inlet row borrows the pick row's shape; only the colour of the id differs, because an inlet
+   is a cut and a pick is a collection. */
+#aoi-body .pick-id {
+    color: var(--selected-text)
+}
+
+#aoi-body .pick-n {
+    color: var(--selected-text)
+}
+
+#aoi-body .picks-list {
+    max-height: 18vh
+}
+
+#aoi-body .picks-actions, #aoi-body > .mini {
+    align-self: flex-start;
+    margin-bottom: 6px;
+    font-family: var(--mono)
+}
+
+#sidebar.aoi-collapsed #aoi-body {
+    display: none
+}
+
+#sidebar.aoi-collapsed #aoi-card {
+    flex: 0 0 auto;
+    padding-bottom: 12px
+}
+
+/* With the mode on, the card is edged the same way multi-select edges its own, because with it on
+   an ordinary click means something else again. */
+#sidebar.aoi-on #aoi-card {
+    box-shadow: inset 3px 0 0 var(--selected-text)
+}
+
+/* The three methods are edged the same way, each at its own depth of the selection orange, so the
+   column always says which one a click on the map belongs to. */
+#sidebar.watershed-on #watershed-card {
+    box-shadow: inset 3px 0 0 var(--upstream)
+}
+
+/* ── the multi-select collection ───────────────────────────────────────────
+   Same folding card as the two below it. It is always in the column, empty or not, because the
+   mode switch in its heading is how the feature is found; the list under it is the working set,
+   newest first, and scrolls on its own however long it gets. */
+#picks-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 0 1 auto;
+    padding: 13px 18px 10px;
+    border-top: 1px solid var(--border)
+}
+
+#picks-card h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+#picks-card h2 .title {
+    flex: 1
+}
+
+/* How many are collected — the number you check before you export. */
+#picks-count {
+    color: var(--selected-text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13px;
+    font-weight: 700
+}
+
+/* The mode switch reads as a switch: it says what it is, not what a click would do, and it is lit
+   while it is on — because with it on, an ordinary click means something else. */
+/* ── the method switches ───────────────────────────────────────────────────
+   One switch at the head of each of the three selection methods, and they are one control between
+   them: turning one on turns the others off. So all three are drawn in the accent, on and off
+   alike, and the difference between them is whether the accent is the fill or the outline. A switch
+   in the theme's ordinary button colours would read as three unrelated buttons that happen to say
+   On and Off.
+
+   They say what they are, not what a click would do — the one reading On is the method a click on
+   the map belongs to. */
+.btn.sm.mode {
+    width: auto;
+    padding: 0 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--accent);
+    border-color: var(--accent)
+}
+
+.btn.sm.mode:hover:not(:disabled) {
+    color: var(--accent);
+    background: var(--accent-soft)
+}
+
+.btn.sm.mode.on {
+    color: var(--on-accent);
+    background: var(--accent);
+    border-color: var(--accent)
+}
+
+.btn.sm.mode.on:hover:not(:disabled) {
+    color: var(--on-accent);
+    background: var(--accent);
+    filter: brightness(1.08)
+}
+
+/* With the mode on, the whole card is edged in the selection colour, so the map's colours and the
+   panel's agree about what a click is about to do. */
+#sidebar.picks-on #picks-card {
+    box-shadow: inset 3px 0 0 var(--selected)
+}
+
+#picks-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.5
+}
+
+#sidebar.picks-collapsed #picks-body {
+    display: none
+}
+
+#sidebar.picks-collapsed #picks-card {
+    flex: 0 0 auto;
+    padding-bottom: 12px
+}
+
+.picks-hint {
+    color: var(--text-faint);
+    font-size: 10px;
+    line-height: 1.45;
+    margin-bottom: 6px
+}
+
+.picks-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 6px;
+    flex-shrink: 0
+}
+
+.picks-actions .mini {
+    font-family: var(--mono)
+}
+
+.mini.danger {
+    color: var(--danger-text)
+}
+
+.mini.danger:hover:not(:disabled) {
+    color: var(--danger-text);
+    border-color: var(--danger)
+}
+
+.picks-empty {
+    color: var(--text-faint);
+    font-size: 10px;
+    padding: 4px 2px
+}
+
+/* Capped at a quarter of the column: a long collection is scrolled through, never at the cost of
+   the styling editor underneath it. */
+.picks-list {
+    overflow-y: auto;
+    min-height: 0;
+    max-height: 26vh;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent
+}
+
+.pick-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 2px;
+    border-top: 1px solid var(--border-soft)
+}
+
+.pick-n {
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    min-width: 18px;
+    text-align: right;
+    flex: 0 0 auto
+}
+
+.pick-main {
+    flex: 1;
+    min-width: 0
+}
+
+.pick-id {
+    display: block;
+    color: var(--selected-text);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600
+}
+
+.pick-meta {
+    display: block;
+    color: var(--text-faint);
+    font-size: 9.5px
+}
+
+.pick-row .mini {
+    font-family: var(--mono);
+    padding: 1px 5px
+}
+
+/* ── the clicked reach ─────────────────────────────────────────────────────
+   Same shape as the styling section below it — an eyebrow that folds the body away — because it is
+   the same kind of thing: a block you open when you want it and leave shut when you do not. It is
+   always on the page, empty until a river is clicked, and it never grows past a third of the
+   column, so the styling editor under it keeps its room. */
+/* ── the layer switches ────────────────────────────────────────────────────
+   What is drawn over the basemap. In the column rather than over the map: these are read against
+   the sections under them, and the map is where you look to see what they did.
+
+   First of the folding sections, so no rule along its top — the header above it draws one. */
+#layers-card {
+    flex: 0 0 auto;
+    padding: 13px 18px 12px
+}
+
+#layers-card h2, #watershed-card h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+#layers-card h2 .title, #watershed-card h2 .title {
+    flex: 1
+}
+
+#layers-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px
+}
+
+/* A switch row: the box, the name, and the colour the layer is drawn in pushed to the right edge,
+   so the swatches line up down the list however long the names are. */
+#layers-body .legend-item {
+    cursor: pointer
+}
+
+#layers-body .layer-name {
+    flex: 1
+}
+
+/* A layer this dataset does not publish. The row stays, so it is clear the app knows about the
+   layer and this archive simply has not got it. */
+#layers-body .legend-item.unavailable {
+    opacity: .45;
+    cursor: not-allowed
+}
+
+#sidebar.layers-collapsed #layers-body {
+    display: none
+}
+
+/* ── the watershed selector ────────────────────────────────────────────────
+   What the last click selected, over the export and the clear. */
+#watershed-card {
+    flex: 0 0 auto;
+    padding: 13px 18px 12px;
+    border-top: 1px solid var(--border)
+}
+
+/* How many streams are selected — the same orange the readout under it counts in, so the folded
+   heading and the open card are one number in one colour. */
+#watershed-count {
+    color: var(--upstream);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13px;
+    font-weight: 700
+}
+
+#sidebar.watershed-collapsed #watershed-body {
+    display: none
+}
+
+#river-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 0 1 auto;
+    padding: 13px 18px 10px;
+    border-top: 1px solid var(--border)
+}
+
+#river-card h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+#river-card h2 .title {
+    flex: 1
+}
+
+/* The riverId beside the heading, so a folded card still says which reach it is holding. */
+#river-card-id {
+    color: var(--selected-text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none
+}
+
+#river-body {
+    overflow-y: auto;
+    min-height: 0;
+    max-height: 33vh;
+    font-size: 11px;
+    line-height: 1.5;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent
+}
+
+#sidebar.river-collapsed #river-body {
+    display: none
+}
+
+#sidebar.river-collapsed #river-card {
+    flex: 0 0 auto;
+    padding-bottom: 12px
+}
+
+/* Label left, value right, hairline between — the reading order is "what is it, what is it here". */
+.river-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 2px;
+    border-top: 1px solid var(--border-soft)
+}
+
+.river-k {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-dim)
+}
+
+.river-v {
+    flex: 0 0 auto;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-align: right;
+    overflow-wrap: anywhere
+}
+
+/* Identifiers are the row you copy out, not the row you read a number off: dimmer key, accent value. */
+.river-identity .river-v {
+    color: var(--accent);
+    font-weight: 400
+}
+
+#river-body .attr-group:first-child {
+    padding-top: 0
+}
+
+#river-body .hint {
+    color: var(--text-faint);
+    font-size: 10px
 }
 
 #style-body {
@@ -897,10 +1533,6 @@ input[type=checkbox] {
     font-size: 10px;
     text-transform: none;
     letter-spacing: 0
-}
-
-#style-body .hidden {
-    display: none
 }
 
 /* The editor's own buttons — .mini, .seg, and the footer's actions. They are not .btn, which is

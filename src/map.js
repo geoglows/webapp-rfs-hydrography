@@ -5,10 +5,25 @@ import {MAX_ZOOM, URLS} from './config.js';
 import {BASE_LAYER_ID, COLORS, compileLayers, defaultSpec, inRangeExpr} from './streamStyle.js';
 
 const TILE_SETS = {
-  positron: {
-    tiles: ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`),
-    maxzoom: 20,
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  'gray-light': {
+    tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
+    maxzoom: 16,
+    attribution: 'Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
+  },
+  'gray-light-labels': {
+    tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}'],
+    maxzoom: 16,
+    attribution: 'Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
+  },
+  'gray-dark': {
+    tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
+    maxzoom: 16,
+    attribution: 'Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
+  },
+  'gray-dark-labels': {
+    tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}'],
+    maxzoom: 16,
+    attribution: 'Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
   },
   imagery: {
     tiles: ['https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
@@ -41,12 +56,13 @@ const TILE_SETS = {
 };
 
 export const BASEMAPS = [
-  {id: 'positron', label: 'Carto Positron', tileSets: ['positron']},
+  {id: 'gray-light', label: 'Light Gray (Esri)', tileSets: ['gray-light', 'gray-light-labels']},
+  {id: 'gray-dark', label: 'Dark Gray (Esri)', tileSets: ['gray-dark', 'gray-dark-labels']},
   {id: 'osm', label: 'OpenStreetMap', tileSets: ['osm']},
   {id: 'opentopo', label: 'OpenTopoMap', tileSets: ['opentopo']},
-  {id: 'topo', label: 'Esri topographic', tileSets: ['topo']},
-  {id: 'imagery', label: 'Esri imagery', tileSets: ['imagery']},
-  {id: 'imagery-labels', label: 'Esri imagery + labels', tileSets: ['imagery', 'places']},
+  {id: 'topo', label: 'Topographic (Esri)', tileSets: ['topo']},
+  {id: 'imagery', label: 'Imagery (Esri)', tileSets: ['imagery']},
+  {id: 'imagery-labels', label: 'Imagery + Labels (Esri)', tileSets: ['imagery', 'places']},
 ];
 
 /** A tile set's source and layer share one id, because there is exactly one layer per set. */
@@ -144,6 +160,23 @@ function readCatchmentArchive(md) {
 
 /** Rule layers are inserted under this one, so the selected outlet is never painted over. */
 const TOP_LAYER = 'outlet';
+
+/** The multi-select collection: every picked watershed, and the outlet reach of each. */
+const PICK_UP_LAYER = 'picked-upstream';
+const PICK_LAYER = 'picked-outlet';
+
+/** The AOI subsetter's inlets: the reaches the selection is cut off above. */
+const INLET_LAYER = 'aoi-inlet';
+
+/**
+ * What the restyled rule layers are inserted under. Everything in here paints the app's own state
+ * — what is selected, what is collected, where an AOI is cut — and none of it may be painted over
+ * by a style rule. Listed bottom to top: rule layers go under the first of them that exists.
+ */
+const OVERLAYS = [PICK_UP_LAYER, PICK_LAYER, TOP_LAYER, INLET_LAYER];
+
+/** A filter that matches no reach — how a highlight layer is switched off. */
+const NOTHING = ['==', ['get', 'riverId'], -1];
 
 const CATCHMENT_SOURCE = 'catchments';
 let catchmentFillLayer = 'catchments';
@@ -297,12 +330,44 @@ export async function initMap() {
         ] : []),
         ...streamLayers,
         {
+          id: PICK_UP_LAYER, type: 'line', source: 'streams', 'source-layer': 'streams',
+          filter: NOTHING,
+          layout: {'line-cap': 'round', 'line-join': 'round'},
+          paint: {
+            'line-color': COLORS.upstream,
+            'line-opacity': 0.95,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.6, 9, 3.2, 14, 5.5],
+          },
+        },
+        {
+          id: PICK_LAYER, type: 'line', source: 'streams', 'source-layer': 'streams',
+          filter: NOTHING,
+          layout: {'line-cap': 'round', 'line-join': 'round'},
+          paint: {
+            'line-color': COLORS.outlet,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 3, 3, 9, 5.5, 14, 9],
+          },
+        },
+        {
           id: TOP_LAYER, type: 'line', source: 'streams', 'source-layer': 'streams',
           filter: ['==', ['get', 'riverId'], -1],
           layout: {'line-cap': 'round', 'line-join': 'round'},
           paint: {
             'line-color': COLORS.outlet,
-            'line-width': ['interpolate', ['linear'], ['zoom'], 3, 3, 9, 5.5, 14, 9],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 3, 5.5, 9, 8.5, 14, 12],
+          },
+        },
+        {
+          // Over the outlet, because an inlet can be the outlet's own reach on a one-reach AOI,
+          // and because it is the thing you are placing while you are placing it.
+          id: INLET_LAYER, type: 'line', source: 'streams', 'source-layer': 'streams',
+          filter: NOTHING,
+          layout: {'line-cap': 'round', 'line-join': 'round'},
+          paint: {
+            // The outlet's own dark orange, and narrower than the outlet: an inlet is the other
+            // end of the same selection, without outweighing the reach it drains to.
+            'line-color': COLORS.outlet,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 3, 4, 9, 6, 14, 8],
           },
         },
       ],
@@ -311,12 +376,17 @@ export async function initMap() {
 
   map.touchZoomRotate.disableRotation();
   map.keyboard.disableRotation();
+  // Shift-click is how a river is added to the multi-select collection, and MapLibre's box zoom
+  // eats the click that ends a shift-drag. Scroll and the +/- control already do the zooming.
+  map.boxZoom.disable();
   const northUp = () => {
     if (map.getBearing()) map.setBearing(0);
   };
   map.on('rotate', northUp);
   northUp();
-  map.addControl(new maplibregl.NavigationControl({showCompass: false}), 'bottom-right');
+  // Zoom top left, the app's own pickers top right, the scale bar bottom left. The credits stay
+  // where MapLibre puts them, along the bottom right, and the legend sits above them.
+  map.addControl(new maplibregl.NavigationControl({showCompass: false}), 'top-left');
   map.addControl(new maplibregl.ScaleControl({unit: 'metric'}), 'bottom-left');
   await ready(map);
   return map;
@@ -353,9 +423,10 @@ export function applyStreamStyle(layers) {
     layerOrder = ids;
   }
 
+  const under = OVERLAYS.find(id => map.getLayer(id));
   for (const l of layers) {
     if (!map.getLayer(l.id)) {
-      map.addLayer(l, map.getLayer(TOP_LAYER) ? TOP_LAYER : undefined);
+      map.addLayer(l, under);
       applied.set(l.id, l);
       continue;
     }
@@ -373,7 +444,11 @@ export function applyStreamStyle(layers) {
 
 /** The selected outlet's own line. Off when the panel is previewing the style without app state. */
 export function setSelectionHighlightVisible(visible) {
-  map.setLayoutProperty(TOP_LAYER, 'visibility', visible ? 'visible' : 'none');
+  // The inlets go with the outlet: they are both the app painting what is selected, and a style
+  // previewed with the highlight off should not still have red reaches over it.
+  for (const id of [TOP_LAYER, INLET_LAYER]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+  }
 }
 
 // ── layer visibility ─────────────────────────────────────────────────────────
@@ -402,6 +477,40 @@ export function applyHighlight(range, outlet, onStyle) {
 
 export function clearHighlight(onStyle) {
   applyHighlight(null, null, onStyle);
+}
+
+/** Draw the AOI's inlets — the reaches the selection stops above. Pass [] to draw none. */
+export function applyInlets(ids) {
+  if (!map?.getLayer(INLET_LAYER)) return;
+  map.setFilter(INLET_LAYER, ids.length
+    ? ['in', ['get', 'riverId'], ['literal', ids]]
+    : NOTHING);
+}
+
+// ── the multi-select collection ──────────────────────────────────────────────
+let picked = [];
+
+/**
+ * Paint every collected watershed: the whole upstream network of each in the pick colour, with the
+ * outlet reach of each drawn over it. Both come off one `riverIndex` range per pick, the same range
+ * the single selection is drawn from, so a collected watershed looks like a selected one that
+ * stayed.
+ */
+export function applyPicks(list) {
+  picked = list ?? [];
+  if (!map?.getLayer(PICK_LAYER)) return;
+  map.setFilter(PICK_LAYER, picked.length
+    ? ['in', ['get', 'riverId'], ['literal', picked.map(p => p.outletId)]]
+    : NOTHING);
+  map.setFilter(PICK_UP_LAYER, picked.length
+    ? ['any', ...picked.map(inRangeExpr)]
+    : NOTHING);
+}
+
+/** Bring one pick into view without changing how far in the map is already zoomed. */
+export function flyToPick({lon, lat}) {
+  if (!map || lon == null || lat == null) return;
+  map.easeTo({center: [lon, lat], zoom: Math.max(map.getZoom(), 8), duration: 700});
 }
 
 // ── the catchments ───────────────────────────────────────────────────────────

@@ -44,10 +44,11 @@ function save(buffer, name) {
   URL.revokeObjectURL(a.href);
 }
 
-function runDataset(dataset, {groupId, outletId, lo, hi, count}) {
+function runDataset(dataset, {groupId, outletId, lo, hi, count, spans}) {
   const key = p => scoped(dataset.key, p);
   return new Promise((resolve, reject) => {
-    stages.done(key('prepare'), `${fmt(count)} reaches · riverIndex ${fmt(lo)}-${fmt(hi)}`);
+    stages.done(key('prepare'), `${fmt(count)} reaches · riverIndex ${fmt(lo)}-${fmt(hi)}` +
+      (spans?.length > 1 ? ` · ${spans.length} runs` : ''));
     stages.set(key('index'), {pct: 2, detail: `opening Group ${groupId}`});
     const t0 = performance.now();
     const worker = new Worker(new URL('./geomWorker.js', import.meta.url), {type: 'module'});
@@ -76,7 +77,7 @@ function runDataset(dataset, {groupId, outletId, lo, hi, count}) {
       reject(new Error(err.message || 'the geometry worker stopped'));
     };
 
-    worker.postMessage({url: dataset.url(groupId), lo, hi});
+    worker.postMessage({url: dataset.url(groupId), lo, hi, spans});
   });
 }
 
@@ -96,7 +97,7 @@ async function runAll(selection) {
   stages.finish();
 }
 
-export function downloadGeometry({groupId, outletId, lo, hi, count, onSettled}) {
+export function downloadGeometry({groupId, outletId, lo, hi, count, spans, onSettled}) {
   if (running) return;
   const refuse = msg => {
     status(msg, 'error');
@@ -109,7 +110,7 @@ export function downloadGeometry({groupId, outletId, lo, hi, count, onSettled}) 
   status('');
   progress.hide();
   stages.begin(EXPORT_PLAN);
-  runAll({groupId, outletId, lo, hi, count}).finally(() => {
+  runAll({groupId, outletId, lo, hi, count, spans}).finally(() => {
     running = false;
     onSettled?.();
   });
