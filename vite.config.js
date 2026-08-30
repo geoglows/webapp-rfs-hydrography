@@ -116,28 +116,30 @@ const serveData = () => {
   };
 };
 
-/**
- * When this bundle was built, for the line at the foot of the settings dialog.
- *
- * A plugin rather than a bare `define` so the value is taken when the build (or the dev server)
- * starts rather than when this module is first imported, and so the dev server can say it is one:
- * a date on a page served by `vite dev` would read as the age of a build that does not exist.
- */
-const buildStamp = () => ({
-  name: 'build-stamp',
-  config: (_config, {command}) => ({
-    define: {
-      __BUILD_DATE__: JSON.stringify(command === 'build' ? new Date().toISOString() : 'dev'),
-    },
-  }),
-});
+// The moment this bundle was made, printed at the bottom of the settings dialog. A deployment is a
+// static site with no version anywhere in it, so a bug report can otherwise only say "the site" —
+// the stamp says which build. It is a module rather than a `define` because a define is not
+// substituted by the dev server, which would leave the line blank for everyone running `npm run
+// dev`. Stamped when the config is loaded: the build itself under `vite build`, and the moment the
+// server started under `vite dev`.
+const BUILD_DATE_ID = 'virtual:build-date';
+
+const stampBuildDate = () => {
+  const resolved = '\0' + BUILD_DATE_ID;
+  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  return {
+    name: 'stamp-build-date',
+    resolveId: id => (id === BUILD_DATE_ID ? resolved : null),
+    load: id => (id === resolved ? `export default ${JSON.stringify(stamp)};` : null),
+  };
+};
 
 // The portal builds every app with `vite build --base="$BASE/"` (see apps.geoglows
 // scripts/build-local.sh), so `base` is left at the default here and supplied on the command line.
 // Nothing in the app hardcodes a path: the data root resolves against document.baseURI, so the
 // same bundle works at /, at /rfs-hydrography-explorer/, and under a PORTAL_BASE prefix.
 export default defineConfig({
-  plugins: [serveData(), buildStamp()],
+  plugins: [serveData(), stampBuildDate()],
   build: {
     target: ['es2020', 'safari14'],
     // The geometry worker pulls in hyparquet + its compressors, which are large and only needed

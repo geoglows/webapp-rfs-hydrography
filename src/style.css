@@ -627,53 +627,6 @@ input[type=checkbox] {
     }
 }
 
-/* ── the one status line ───────────────────────────────────────────────────
-   Overwritten, never appended to. */
-#status {
-    display: none;
-    padding: 9px 20px 11px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.6;
-    color: var(--text-dim);
-    word-break: break-word
-}
-
-#status.info {
-    color: var(--accent)
-}
-
-#status.success {
-    color: var(--success)
-}
-
-#status.error {
-    color: var(--danger-text);
-    background: var(--danger-bg);
-    border-top-color: var(--danger)
-}
-
-/* A run that saves two files reports two results. Each line keeps its own colour — a file that was
-   saved is green whatever else in the block went wrong — which is why these outrank the block's
-   own class rather than inheriting from it. */
-#status .status-line + .status-line {
-    margin-top: 5px
-}
-
-#status .status-line.info {
-    color: var(--accent)
-}
-
-#status .status-line.success {
-    color: var(--success)
-}
-
-#status .status-line.error {
-    color: var(--danger-text)
-}
-
 /* The eyebrow over a block of controls — the same one RFS v3 puts over each of its sections. */
 #legend-overlay h2 {
     font-size: 12px;
@@ -787,17 +740,14 @@ input[type=checkbox] {
     flex: 0 0 auto
 }
 
-/* Which build you are looking at, under everything else in the dialog. Quiet: it is a thing you go
-   looking for, not a thing the dialog is about. */
-.modal-foot {
-    flex: 0 0 auto;
-    padding: 8px 16px 10px;
-    border-top: 1px solid var(--border);
-    color: var(--text-faint);
+/* The last line of the settings dialog: which build is running. Quiet on purpose — it is there to
+   be quoted in a bug report, not read. */
+.build-stamp {
+    margin: 20px 0 2px;
+    text-align: center;
     font-family: var(--mono);
-    font-size: 10.5px;
-    letter-spacing: .3px;
-    text-align: right
+    font-size: 12px;
+    opacity: .7
 }
 
 /* The surface every floating thing is drawn on. */
@@ -1158,10 +1108,6 @@ input[type=checkbox] {
     font-size: 10px;
     line-height: 1.5;
     margin-top: 6px
-}
-
-#sidebar.names-on #names-card {
-    box-shadow: inset 3px 0 0 #2563eb
 }
 
 #sidebar.names-collapsed #names-body {

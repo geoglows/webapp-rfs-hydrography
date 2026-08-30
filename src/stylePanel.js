@@ -48,7 +48,7 @@ const zoomOptions = (withNone, noneLabel = '—') => [
 
 const num = v => (v === '' || v == null ? null : Number(v));
 
-export function createStylePanel({mount, onChange, selection, status, pmtiles}) {
+export function createStylePanel({mount, onChange, selection, pmtiles}) {
   let spec = defaultSpec();
   let attributes = [];
   let attrError = '';
@@ -411,7 +411,6 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
             collapsed.clear();
             for (const r of spec.rules) collapsed.add(r.id);
             restructured();
-            status(`Preset "${p.label}" — ${p.hint}`, 'info');
           }, 'preset'),
         el('button', {
           class: 'mini', text: '+ rule', title: 'Add an empty rule',
@@ -455,7 +454,6 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
           spec = defaultSpec();
           collapsed.clear();
           restructured();
-          status('Style reset to the v3 default', '');
         }
       }),
       file,
@@ -475,8 +473,6 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
     a.download = name;
     a.click();
     URL.revokeObjectURL(a.href);
-    const n = spec.rules.filter(r => r.enabled !== false).length;
-    status(`Saved ${name} — ${n} rule${n === 1 ? '' : 's'} plus the base style`, 'success');
   }
 
   async function loadFile(f) {
@@ -487,10 +483,8 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
       collapsed.clear();
       for (const r of spec.rules) collapsed.add(r.id);
       restructured();
-      status(`Loaded ${f.name} — ${spec.rules.length} rule(s)` +
-        (parsed.notes.length ? `. ${parsed.notes.join('; ')}` : ''), parsed.notes.length ? 'info' : 'success');
     } catch (err) {
-      status(`${f.name} is not a style file: ${err.message}`, 'error');
+      console.error('[style] load failed', err);
     }
   }
 

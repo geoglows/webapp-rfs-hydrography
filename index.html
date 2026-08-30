@@ -148,7 +148,6 @@
       <div id="progress-detail"></div>
     </div>
     <div id="stages"></div>
-    <div id="status"></div>
   </div>
 </div>
 
@@ -185,8 +184,9 @@
         <input id="set-legend" type="checkbox"/>
         <span>Show the map legend</span>
       </label>
+      <!-- stamped at build time by stampBuildDate() in vite.config.js; filled in initSettings() -->
+      <p class="hint build-stamp">Build <span id="build-date"></span></p>
     </div>
-    <div class="modal-foot" id="build-stamp" title="When this build of the app was made"></div>
   </div>
 </div>
 

@@ -13,7 +13,7 @@ import {aoi, isDownstreamOf, spanCount} from './aoi.js';
 import {renderAoi} from './aoiPanel.js';
 import {renderPicks} from './picksPanel.js';
 import {downloadGeometry} from './geometry.js';
-import {clearStatus, fmt, progress, progressHistory, stageHistory, stages, status} from './ui.js';
+import {fmt, progress, progressHistory, stageHistory, stages} from './ui.js';
 import {heroIcon} from './icons.js';
 import {initMapControls, syncLayerPicker} from './mapControls.js';
 import {initSettings, onSetting} from './settings.js';
@@ -86,7 +86,6 @@ const reachOnlyRecord = rec => ({
  * handed the one-reach version.
  */
 function selectOutlet(at) {
-  clearStatus();
   try {
     const full = reachRecord(at);
     // Kept whole whichever method read it, so switching between river and watershed can re-read
@@ -94,13 +93,8 @@ function selectOutlet(at) {
     lastRec = full;
     const rec = mode === 'river' ? reachOnlyRecord(full) : full;
     setSelection(rec, [{lo: rec.lo, hi: rec.hi}]);
-    status(rec.reachOnly
-      ? `Reach ${rec.outletId} selected` + (rec.groupId != null ? ` · Group ${rec.groupId}` : '')
-      : `${fmt(sel.count)} reaches selected` +
-        (sel.groupId != null ? ` · Group ${sel.groupId}` : ''), 'success');
     return full;
   } catch (err) {
-    status(err.message, 'error');
     console.error(err);
     return null;
   }
@@ -178,16 +172,13 @@ function setBusy(on) {
 /** Whatever the method that is on has to hand, one outlet riverId per line. */
 async function copyIds() {
   const text = mode === 'multi' ? idsText() : (sel ? String(sel.outletId) : '');
-  if (!text) return status('Nothing selected, so there is nothing to copy.', 'error');
-  const n = mode === 'multi' ? picks.count() : 1;
+  if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    status(`${fmt(n)} outlet id${n === 1 ? '' : 's'} copied to the clipboard.`, 'success');
   } catch (err) {
     // Clipboard access is denied on an insecure origin and in some embeddings; the ids are on the
     // page either way, so say why rather than just failing.
     console.warn('[explorer] clipboard write refused', err);
-    status(`Could not reach the clipboard: ${err.message}`, 'error');
   }
 }
 
@@ -195,10 +186,9 @@ async function copyIds() {
 function clearCurrent() {
   if (mode !== 'multi') return clearSelection();
   const n = picks.count();
-  if (!n) return status('Nothing collected yet.', 'info');
+  if (!n) return;
   if (!confirm(`Clear all ${fmt(n)} collected outlets? They are not saved anywhere else.`)) return;
   picks.clear();
-  status('Collection cleared.', 'info');
 }
 
 function clearSelection() {
@@ -211,7 +201,6 @@ function clearSelection() {
   $('river-select-count').textContent = '';
   showRiverAttributes(null);
   paintActions();
-  clearStatus();
   progress.hide();
   stages.hide();
   // Quiet when there is no AOI, so this cannot bounce back through the change handler below.
@@ -320,7 +309,7 @@ function leaveMode(prev) {
   return true;
 }
 
-function setMode(next, {say = false} = {}) {
+function setMode(next) {
   const want = next in MODES ? next : 'river';
   const prev = mode;
   if (want !== prev && !leaveMode(prev)) return;
@@ -350,17 +339,6 @@ function setMode(next, {say = false} = {}) {
     const {spans: _ignored, ...rec} = sel;
     aoi.setOutlet({...rec, count: rec.hi - rec.lo + 1});
   }
-  if (!say) return;
-  const {outlet} = aoi.state();
-  status({
-    river: 'River selector on — a click selects just the reach it lands on.',
-    watershed: 'Watershed selector on — a click selects everything that drains to the reach it ' +
-      'lands on.',
-    aoi: outlet
-      ? `AOI subsetter on, outlet ${outlet.outletId} — click each inlet to drop what drains into it.`
-      : 'AOI subsetter on — click the reach at the outlet of your area of interest.',
-    multi: 'Multi-select on — every click collects the watershed above the reach it lands on.',
-  }[mode], 'info');
 }
 
 // ── the AOI subsetter ────────────────────────────────────────────────────────
@@ -372,52 +350,23 @@ function setMode(next, {say = false} = {}) {
  */
 /** What a click on a river means while the mode is on: the outlet first, then inlets. */
 function aoiClick(at, lngLat) {
-  clearStatus();
   let rec;
   try {
     rec = reachRecord(at);
   } catch (err) {
-    return status(err.message, 'error');
+    return console.error(err);
   }
   const point = {lon: lngLat.lng, lat: lngLat.lat};
   const {outlet} = aoi.state();
   if (!outlet) {
-    aoi.setOutlet({...rec, ...point});
-    return status(`AOI outlet ${rec.outletId} · ${fmt(rec.count)} reaches upstream — now click ` +
-      'the inlets you want trimmed off.', 'success');
+    return aoi.setOutlet({...rec, ...point});
   }
   // A click below the outlet is not a failed inlet — it is the outlet moved down. The area only
   // grows, so the inlets stay where they were put and go on cutting the same ground.
   if (isDownstreamOf(rec, outlet)) {
-    aoi.setOutlet({...rec, ...point});
-    const {count, inlets} = aoi.state();
-    const kept = inlets.length
-      ? `, ${fmt(inlets.length)} inlet${inlets.length === 1 ? '' : 's'} kept`
-      : '';
-    return status(`AOI outlet moved downstream to ${rec.outletId} · ` +
-      `${fmt(count)} reach${count === 1 ? '' : 'es'} in the AOI${kept}.`, 'success');
+    return aoi.setOutlet({...rec, ...point});
   }
-  const result = aoi.toggleInlet({...rec, ...point});
-  const {count, inlets} = aoi.state();
-  const left = `${fmt(count)} reach${count === 1 ? '' : 'es'} left in the AOI`;
-  if (result === 'added') {
-    return status(`Inlet ${rec.outletId} — it and what drains into it are out. ` +
-      `${fmt(inlets.length)} inlet${inlets.length === 1 ? '' : 's'} · ${left}.`, 'success');
-  }
-  if (result === 'removed') {
-    return status(`Inlet ${rec.outletId} removed — it and the ground above it are back. ${left}.`,
-      'info');
-  }
-  if (result === 'outside') {
-    return status(`${rec.outletId} is not inside this AOI, so it cannot be one of its inlets. ` +
-      `Click a reach that drains to ${outlet.outletId}.`, 'error');
-  }
-  if (result === 'is-outlet') {
-    return status(`${rec.outletId} is the AOI's own outlet — making it an inlet would cut the ` +
-      'whole area away. Click a reach upstream of it instead.', 'error');
-  }
-  return status(`${rec.outletId} is already above an inlet, so it is out of the AOI along with ` +
-    'everything around it.', 'info');
+  aoi.toggleInlet({...rec, ...point});
 }
 
 /** The AOI changed: repaint the card, the inlets on the map, and the selection it adds up to. */
@@ -448,14 +397,7 @@ aoi.onChange(paintAoi);
  */
 /** One click both collects and uncollects, so a wrong pick is undone where it was made. */
 function collect(rec) {
-  const result = picks.toggle(rec);
-  if (result === 'full') {
-    return status(`The collection is at its ceiling of ${fmt(MAX_PICKS)} — export it and clear ` +
-      'it to keep collecting.', 'error');
-  }
-  const n = picks.count();
-  status(`${result === 'removed' ? 'Removed' : 'Collected'} ${rec.outletId} · ` +
-    `${fmt(n)} outlet${n === 1 ? '' : 's'} collected`, result === 'removed' ? 'info' : 'success');
+  picks.toggle(rec);
 }
 
 /** The list changed: repaint the map, the count beside the heading, and the rows. */
@@ -634,7 +576,6 @@ function paintNames() {
 
 function setNamesOn(on, {say = false} = {}) {
   if (on && !riverNames()) {
-    if (say) status(namesError ? `No river names: ${namesError}` : 'The river names are still loading.', 'error');
     return;
   }
   namesOn = on;
@@ -643,7 +584,6 @@ function setNamesOn(on, {say = false} = {}) {
   $('sidebar').classList.toggle('names-on', on);
   if (on) setNamesCollapsed(false);
   applyStyle();
-  if (say) status(on ? 'Colouring the network by river name.' : 'River name colouring off.');
 }
 
 function setNamesCollapsed(collapsed) {
@@ -696,7 +636,7 @@ setStyleCollapsed(true);
 // The whole row is the switch, not just the On/Off pill in it, because the four rows are one
 // control: you are picking which of them a click on the map belongs to.
 for (const [name, {card}] of Object.entries(MODES)) {
-  $(`${card}-head`).addEventListener('click', () => setMode(name, {say: true}));
+  $(`${card}-head`).addEventListener('click', () => setMode(name));
 }
 
 // The other way in, for a session spent on the map rather than in the panel. The key of the method
@@ -709,7 +649,7 @@ window.addEventListener('keydown', e => {
   if (!hit) return;
   const t = e.target;
   if (t?.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(t?.tagName)) return;
-  setMode(mode === hit[0] ? 'river' : hit[0], {say: true});
+  setMode(mode === hit[0] ? 'river' : hit[0]);
 });
 
 paintPicks();
@@ -776,7 +716,6 @@ let ready = false;
       mount: $('style-body'),
       onChange: applyStyle,
       selection: selectionForStyle,
-      status,
       pmtiles: URLS.streamsPmtiles,
     });
     const showZoom = () => {
@@ -790,7 +729,6 @@ let ready = false;
     ready = true;
   } catch (err) {
     progress.hide();
-    status(`Init failed: ${err.message}`, 'error');
     console.error(err);
   }
 })();

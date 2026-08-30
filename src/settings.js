@@ -9,6 +9,8 @@
  * Nothing here touches the map directly. A caller subscribes with onSetting() and does the work.
  */
 
+import BUILD_DATE from 'virtual:build-date';
+
 // The app's own namespace. The theme is the one thing deliberately shared with RFS v3 (see main.js);
 // everything else is this app's alone, so it is keyed like its picks and its multi-select mode.
 const STORAGE_PREFIX = 'rfs-hydrography-setting-';
@@ -55,22 +57,6 @@ export function onSetting(key, fn) {
   fn(getSetting(key));
 }
 
-/**
- * The build stamp at the foot of the dialog — which build of the app you are looking at, which is
- * the first thing worth knowing when the page and the data disagree. vite.config.js's build-stamp
- * plugin substitutes the constant; on the dev server it is the string "dev", because there is no
- * build to date.
- */
-function paintBuildStamp() {
-  const el = $('build-stamp');
-  if (!el) return;
-  const stamp = __BUILD_DATE__;
-  const at = new Date(stamp);
-  el.textContent = Number.isNaN(at.getTime())
-    ? `Build ${stamp}`
-    : `Build ${at.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-}
-
 const openModal = id => $(id).classList.remove('hidden');
 const closeModal = id => $(id).classList.add('hidden');
 
@@ -85,7 +71,7 @@ export function initSettings() {
     el.addEventListener('change', () => setSetting(setting.key, el.checked));
   }
 
-  paintBuildStamp();
+  if ($('build-date')) $('build-date').textContent = BUILD_DATE;
   $('btn-settings').addEventListener('click', () => openModal('settings-modal'));
   for (const el of document.querySelectorAll('[data-close]')) {
     el.addEventListener('click', () => closeModal(el.dataset.close));

@@ -1,6 +1,5 @@
 const $ = id => document.getElementById(id);
 
-const statusEl = $('status');
 const stagesEl = $('stages');
 const progressEl = $('progress');
 const phaseEl = $('progress-phase');
@@ -17,26 +16,6 @@ export const clock = s => {
   const m = Math.floor(s / 60);
   return m ? `${m}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${s.toFixed(s < 10 ? 1 : 0)}s`;
 };
-
-const RANK = {'': 0, info: 1, success: 2, error: 3};
-
-export function statusLines(lines) {
-  const shown = lines.filter(l => l && l.text);
-  statusEl.replaceChildren(...shown.map(l => {
-    const n = document.createElement('div');
-    n.className = `status-line ${l.cls || ''}`.trim();
-    n.textContent = l.text;
-    return n;
-  }));
-  statusEl.className = shown.reduce((worst, l) =>
-    (RANK[l.cls || ''] > RANK[worst] ? (l.cls || '') : worst), '');
-  statusEl.style.display = shown.length ? 'block' : 'none';
-}
-
-/** The one status line. `cls` is '' | 'info' | 'success' | 'error'. */
-export const status = (msg, cls = '') => statusLines([{text: msg, cls}]);
-
-export const clearStatus = () => status('');
 
 let hideTimer = null;
 

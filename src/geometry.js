@@ -1,5 +1,5 @@
 import {URLS} from './config.js';
-import {clock, fmt, mb, progress, stages, status, statusLines} from './ui.js';
+import {fmt, progress, stages} from './ui.js';
 
 let running = false;
 export const isBusy = () => running;
@@ -50,15 +50,11 @@ function runDataset(dataset, {groupId, outletId, lo, hi, count, spans}) {
     stages.done(key('prepare'), `${fmt(count)} reaches · riverIndex ${fmt(lo)}-${fmt(hi)}` +
       (spans?.length > 1 ? ` · ${spans.length} runs` : ''));
     stages.set(key('index'), {pct: 2, detail: `opening Group ${groupId}`});
-    const t0 = performance.now();
     const worker = new Worker(new URL('./geomWorker.js', import.meta.url), {type: 'module'});
-    const notes = [];
 
     worker.onmessage = e => {
       const m = e.data;
-      if (m.type === 'note') {
-        return notes.push({text: `${dataset.label}: ${m.text}`, cls: m.cls || ''});
-      }
+      if (m.type === 'note') return;
       if (m.type === 'stage') {
         return stages.set(key(m.key), {pct: m.pct, detail: m.detail, indeterminate: m.indeterminate});
       }
@@ -66,11 +62,7 @@ function runDataset(dataset, {groupId, outletId, lo, hi, count, spans}) {
       if (m.type === 'error') return reject(new Error(m.message));
       const name = `rfs_v3_group${groupId}_${outletId}_${dataset.key}.parquet`;
       save(m.buffer, name);
-      resolve([...notes, {
-        text: `Saved ${name} — ${fmt(m.rows)} reaches · ${mb(m.buffer.byteLength)} written · ` +
-          `${mb(m.fetched)} fetched · ${clock((performance.now() - t0) / 1000)}`,
-        cls: 'success',
-      }]);
+      resolve();
     };
     worker.onerror = err => {
       worker.terminate();
@@ -82,14 +74,11 @@ function runDataset(dataset, {groupId, outletId, lo, hi, count, spans}) {
 }
 
 async function runAll(selection) {
-  const lines = [];
   for (const dataset of DATASETS) {
     try {
-      lines.push(...await runDataset(dataset, selection));
-      statusLines(lines);
+      await runDataset(dataset, selection);
     } catch (err) {
       stages.fail(err.message);
-      statusLines([...lines, {text: `${dataset.label} download failed: ${err.message}`, cls: 'error'}]);
       console.error(`[geometry] ${dataset.key}`, err);
       return;
     }
@@ -99,15 +88,11 @@ async function runAll(selection) {
 
 export function downloadGeometry({groupId, outletId, lo, hi, count, spans, onSettled}) {
   if (running) return;
-  const refuse = msg => {
-    status(msg, 'error');
-    onSettled?.();
-  };
   if (groupId == null) {
-    return refuse('No Group for this selection, so there is no geometry file to open.');
+    console.error('[geometry] no Group for this selection');
+    return onSettled?.();
   }
   running = true;
-  status('');
   progress.hide();
   stages.begin(EXPORT_PLAN);
   runAll({groupId, outletId, lo, hi, count, spans}).finally(() => {
