@@ -116,12 +116,28 @@ const serveData = () => {
   };
 };
 
+/**
+ * When this bundle was built, for the line at the foot of the settings dialog.
+ *
+ * A plugin rather than a bare `define` so the value is taken when the build (or the dev server)
+ * starts rather than when this module is first imported, and so the dev server can say it is one:
+ * a date on a page served by `vite dev` would read as the age of a build that does not exist.
+ */
+const buildStamp = () => ({
+  name: 'build-stamp',
+  config: (_config, {command}) => ({
+    define: {
+      __BUILD_DATE__: JSON.stringify(command === 'build' ? new Date().toISOString() : 'dev'),
+    },
+  }),
+});
+
 // The portal builds every app with `vite build --base="$BASE/"` (see apps.geoglows
 // scripts/build-local.sh), so `base` is left at the default here and supplied on the command line.
 // Nothing in the app hardcodes a path: the data root resolves against document.baseURI, so the
 // same bundle works at /, at /rfs-hydrography-explorer/, and under a PORTAL_BASE prefix.
 export default defineConfig({
-  plugins: [serveData()],
+  plugins: [serveData(), buildStamp()],
   build: {
     target: ['es2020', 'safari14'],
     // The geometry worker pulls in hyparquet + its compressors, which are large and only needed

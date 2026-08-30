@@ -4,7 +4,9 @@
  * The click that picks an outlet hands back the feature's whole property bag, and until now only
  * the four fields the subset needs were ever shown. This renders the rest of it: every attribute
  * the tiles carry for that reach, under the same labels, units and notes the styling panel's field
- * list uses, grouped the same way — measures first, then categories, then the identifiers.
+ * list uses, in the same order — measures first, then categories, then the identifiers. The order
+ * is the grouping: no headings are drawn over the runs, because the rows themselves are the list
+ * you scan and a heading every few rows is what breaks that scan up.
  *
  * Everything is built as nodes. The values come out of the tiles, so none of them gets to be markup.
  */
@@ -15,12 +17,6 @@ const el = (tag, cls, text) => {
   if (cls) n.className = cls;
   if (text != null) n.textContent = text;
   return n;
-};
-
-const ROLE_TITLE = {
-  measure: 'Measures',
-  category: 'Categories',
-  identity: 'Identifiers',
 };
 
 const isNum = v => typeof v === 'number' && isFinite(v);
@@ -68,17 +64,6 @@ export function renderRiverAttributes(mount, props) {
     return (roleRank(ia.role) - roleRank(ib.role)) || ia.label.localeCompare(ib.label);
   });
   const out = [];
-  if (!names.length) {
-    out.push(el('div', 'hint', 'That reach carries no attributes in these tiles.'));
-  }
-  let role = null;
-  for (const name of names) {
-    const info = fieldInfo(name, typeof props[name] === 'string' ? 'string' : 'number');
-    if (info.role !== role) {
-      role = info.role;
-      out.push(el('div', 'attr-group', ROLE_TITLE[role] ?? 'Other'));
-    }
-    out.push(row(name, props[name]));
-  }
+  for (const name of names) out.push(row(name, props[name]));
   mount.replaceChildren(...out);
 }

@@ -41,10 +41,10 @@
        because it is the same stream, and the legend swatch beside it has to be the colour the line
        on the map actually is. --stream is overwritten at runtime by the styling panel's base
        colour, which is why the legend follows a restyle. */
-    --stream: #4A90E2;
+    --stream: #3B82F6;
     --upstream: #F5A623;
     --selected: #B45309;
-    --group: #8b5cf6;
+    --group: #A78BFA;
     --basin: #14b8a6;
     --catchment: #D55E00;
     /* Everything a selection is made of — its area, the reaches that bound it, and the collected
@@ -110,15 +110,28 @@ body {
 
    A quarter of the window, floored at the width the styling editor's rows need — attribute,
    operator and value on one line — and capped so a wide screen gives the extra room to the map,
-   which is the thing that benefits from it. */
+   which is the thing that benefits from it.
+
+   One scroll for the whole column, and none inside it. Every section is its full height and the
+   column runs off the bottom when they add up to more than the window — which is what a stack of
+   panels should do. Capping each section at its own slice of the viewport, as this used to, meant
+   four scrollbars, every one of them scrolling something short. */
 #sidebar {
     flex: 0 0 clamp(360px, 25%, 480px);
     z-index: 10;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
     background: var(--surface);
     border-right: 1px solid var(--border)
+}
+
+/* Nothing in the column sets a height of its own — the one above does the scrolling. */
+#sidebar > * {
+    flex: 0 0 auto
 }
 
 /* The banner: the portal's logo, which is also the way back to it, over the app's own name. */
@@ -443,14 +456,7 @@ input[type=checkbox] {
     display: none;
     padding: 10px 20px 12px;
     border-top: 1px solid var(--border);
-    font-family: var(--mono);
-    /* Four bars and fourteen phase lines is taller than a short viewport has to spare, and the
-       sidebar clips rather than scrolls. This is the one block that gives way: it scrolls within
-       itself so the status line under it — which is where the saved filenames are — is never the
-       thing pushed off the bottom. */
-    flex-shrink: 1;
-    min-height: 0;
-    overflow-y: auto
+    font-family: var(--mono)
 }
 
 .stage-group {
@@ -669,7 +675,7 @@ input[type=checkbox] {
 }
 
 /* The eyebrow over a block of controls — the same one RFS v3 puts over each of its sections. */
-#style-card h2, #legend-overlay h2 {
+#legend-overlay h2 {
     font-size: 12px;
     font-weight: 600;
     color: var(--text-dim);
@@ -781,6 +787,19 @@ input[type=checkbox] {
     flex: 0 0 auto
 }
 
+/* Which build you are looking at, under everything else in the dialog. Quiet: it is a thing you go
+   looking for, not a thing the dialog is about. */
+.modal-foot {
+    flex: 0 0 auto;
+    padding: 8px 16px 10px;
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .3px;
+    text-align: right
+}
+
 /* The surface every floating thing is drawn on. */
 .card {
     background: var(--surface);
@@ -884,12 +903,273 @@ input[type=checkbox] {
     height: 12px;
     border-radius: 2px;
     border: 1px solid var(--group);
-    background: rgba(139, 92, 246, .18)
+    background: rgba(167, 139, 250, .18)
 }
 
 .swatch.poly.basin {
     border-color: var(--basin);
     background: rgba(20, 184, 166, .18)
+}
+
+/* ── the selection actions ─────────────────────────────────────────────────
+   Under the heading and above the four methods, inside the same card. What they act on is the
+   current selection, whichever method made it, so they belong to the block as a whole rather than
+   to any one row of it. */
+#selection-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-bottom: 10px
+}
+
+/* One line, equal shares. min-width overrides a flex item's automatic minimum, which is what would
+   otherwise refuse to shrink a button below the width of its own label. */
+#selection-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 6px;
+    padding-right: 6px
+}
+
+/* ── the selection methods ────────────────────────────────────────────────
+   Four rows, one per answer a click on the map can give — the reach, its watershed, a collection of
+   watersheds, an area cut out of one. They are four answers to the same question, not four features
+   that stack, so they are drawn as one control and not as four panels: no rules between the rows,
+   nothing to fold, and the row reading On is what a click means.
+
+   Whatever the chosen method has to show sits under all four rows, in the one place, so choosing a
+   different method never moves the list you chose it from. */
+#selectors-card {
+    display: flex;
+    flex-direction: column;
+    padding: 13px 18px 10px;
+    border-top: 1px solid var(--border)
+}
+
+#selectors-card > h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+/* Pulled out to the card's padding, so a row's hover and its lit edge run the full width of the
+   column rather than stopping short of it. */
+#selector-rows {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    margin: 0 -18px
+}
+
+/* The whole row is the switch — the On/Off pill in it is the state, not the only target. */
+.selector-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 18px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+.selector-head:hover {
+    background: var(--surface2)
+}
+
+/* The name, then what it gets you. The clarification takes the slack, so every count lines up on
+   the right edge however long the names are. */
+.selector-head .clarify {
+    flex: 1;
+    color: var(--text-faint);
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0
+}
+
+/* The chosen row, edged in the colour the method paints the map with. */
+#sidebar.river-select-on #river-select-head {
+    color: var(--text);
+    background: var(--surface2);
+    box-shadow: inset 3px 0 0 var(--selected)
+}
+
+#sidebar.watershed-on #watershed-head {
+    color: var(--text);
+    background: var(--surface2);
+    box-shadow: inset 3px 0 0 var(--upstream)
+}
+
+#sidebar.picks-on #picks-head {
+    color: var(--text);
+    background: var(--surface2);
+    box-shadow: inset 3px 0 0 var(--selected)
+}
+
+#sidebar.aoi-on #aoi-head {
+    color: var(--text);
+    background: var(--surface2);
+    box-shadow: inset 3px 0 0 var(--selected-text)
+}
+
+/* The counts each keep the colour their method's readout counts in. */
+#river-select-count, #aoi-count, #picks-count {
+    color: var(--selected-text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13px;
+    font-weight: 700
+}
+
+#watershed-count {
+    color: var(--upstream);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13px;
+    font-weight: 700
+}
+
+/* The one readout under the four rows. Only the chosen method's block is in the page; the two ids
+   deep are so these beat the layout each body sets for itself further down. */
+#selector-body {
+    display: flex;
+    flex-direction: column
+}
+
+#sidebar #river-select-body,
+#sidebar #watershed-body,
+#sidebar #picks-body,
+#sidebar #aoi-body {
+    display: none
+}
+
+#sidebar.river-select-on #river-select-body,
+#sidebar.watershed-on #watershed-body {
+    display: block;
+    margin-top: 8px
+}
+
+#sidebar.picks-on #picks-body,
+#sidebar.aoi-on #aoi-body {
+    display: flex;
+    margin-top: 8px
+}
+
+#river-select-info {
+    display: none;
+    font-size: 11px;
+    line-height: 1.6
+}
+
+/* ── the river names section ───────────────────────────────────────────────
+   Built like every other card in the column. Its switch is the same On/Off control the three
+   selection methods wear, because it is the same kind of thing to operate — but the edge it puts on
+   the card is a name colour, not the selection orange, since turning it on changes what the map is
+   coloured by and not what a click on it does. */
+/* ── styling options ──────────────────────────────────────────────────────
+   Two ways of changing what the network looks like — the names table's colours, and the rule
+   editor that draws everything the names do not — under one heading, because they are one subject
+   and you arrive at the column looking for "how this is drawn" rather than for either by name. */
+#styling-card {
+    padding: 13px 18px 10px;
+    border-top: 1px solid var(--border)
+}
+
+#styling-card > h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+/* A subsection of it: no rule, no padding of its own, and a quieter heading than the one over
+   both, so the two read as parts of the block rather than as two blocks. */
+#names-card {
+    margin-bottom: 10px
+}
+
+#names-card h3, #style-card h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-family: var(--mono)
+}
+
+#names-card h3 .title {
+    flex: 1
+}
+
+#names-count {
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13px;
+    font-weight: 700
+}
+
+/* The three name colours sit in one swatch group, because what they mean together is "named" —
+   no one of them stands for anything on its own. */
+#names-body .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 5px;
+    font-size: 11px
+}
+
+#names-body .legend-item .swatch:last-of-type {
+    margin-right: 4px
+}
+
+#names-body .legend-item > span:last-child {
+    margin-left: 2px;
+    color: var(--text-dim)
+}
+
+.names-hint {
+    color: var(--text-faint);
+    font-size: 10px;
+    line-height: 1.5;
+    margin-top: 6px
+}
+
+#sidebar.names-on #names-card {
+    box-shadow: inset 3px 0 0 #2563eb
+}
+
+#sidebar.names-collapsed #names-body {
+    display: none
+}
+
+#sidebar.names-collapsed #names-card {
+    margin-bottom: 8px
 }
 
 /* ── the region popup ──────────────────────────────────────────────────────
@@ -958,14 +1238,10 @@ input[type=checkbox] {
    nothing else to pick from. */
 #style-card {
     display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 1 1 auto;
-    padding: 13px 18px 10px;
-    border-top: 1px solid var(--border)
+    flex-direction: column
 }
 
-#style-card h2 {
+#style-card h3 {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -973,7 +1249,7 @@ input[type=checkbox] {
     flex-shrink: 0
 }
 
-#style-card h2 .title {
+#style-card h3 .title {
     flex: 1
 }
 
@@ -988,51 +1264,9 @@ input[type=checkbox] {
    The same folding card as multi-select below it, and for the same reason: the mode switch in its
    heading is how the feature is found. It is a shorter list — an outlet and its inlets — so it is
    laid out with the pick rows rather than with a set of its own. */
-/* Never squeezed: this card is a short list with a button under it, and a column that ran out of
-   room used to cut the Clear off the bottom of it. The inlet list scrolls on its own instead. */
-#aoi-card {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 0 0 auto;
-    padding: 13px 18px 10px;
-    border-top: 1px solid var(--border)
-}
-
-#aoi-card h2 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    flex-shrink: 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: .8px;
-    font-family: var(--mono)
-}
-
-#aoi-card h2 .title {
-    flex: 1
-}
-
-/* How many inlets are cutting into the AOI — the number that says how far it is from the whole
-   watershed the outlet would have selected. */
-#aoi-count {
-    color: var(--selected-text);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0;
-    text-transform: none;
-    font-size: 13px;
-    font-weight: 700
-}
-
 #aoi-body {
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
     font-size: 11px;
     line-height: 1.5
 }
@@ -1069,78 +1303,10 @@ input[type=checkbox] {
     color: var(--selected-text)
 }
 
-#aoi-body .picks-list {
-    max-height: 18vh
-}
-
-#aoi-body .picks-actions, #aoi-body > .mini {
-    align-self: flex-start;
-    margin-bottom: 6px;
-    font-family: var(--mono)
-}
-
-#sidebar.aoi-collapsed #aoi-body {
-    display: none
-}
-
-#sidebar.aoi-collapsed #aoi-card {
-    flex: 0 0 auto;
-    padding-bottom: 12px
-}
-
-/* With the mode on, the card is edged the same way multi-select edges its own, because with it on
-   an ordinary click means something else again. */
-#sidebar.aoi-on #aoi-card {
-    box-shadow: inset 3px 0 0 var(--selected-text)
-}
-
-/* The three methods are edged the same way, each at its own depth of the selection orange, so the
-   column always says which one a click on the map belongs to. */
-#sidebar.watershed-on #watershed-card {
-    box-shadow: inset 3px 0 0 var(--upstream)
-}
-
 /* ── the multi-select collection ───────────────────────────────────────────
    Same folding card as the two below it. It is always in the column, empty or not, because the
    mode switch in its heading is how the feature is found; the list under it is the working set,
    newest first, and scrolls on its own however long it gets. */
-#picks-card {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 0 1 auto;
-    padding: 13px 18px 10px;
-    border-top: 1px solid var(--border)
-}
-
-#picks-card h2 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    flex-shrink: 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: .8px;
-    font-family: var(--mono)
-}
-
-#picks-card h2 .title {
-    flex: 1
-}
-
-/* How many are collected — the number you check before you export. */
-#picks-count {
-    color: var(--selected-text);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0;
-    text-transform: none;
-    font-size: 13px;
-    font-weight: 700
-}
-
 /* The mode switch reads as a switch: it says what it is, not what a click would do, and it is lit
    while it is on — because with it on, an ordinary click means something else. */
 /* ── the method switches ───────────────────────────────────────────────────
@@ -1181,47 +1347,11 @@ input[type=checkbox] {
     filter: brightness(1.08)
 }
 
-/* With the mode on, the whole card is edged in the selection colour, so the map's colours and the
-   panel's agree about what a click is about to do. */
-#sidebar.picks-on #picks-card {
-    box-shadow: inset 3px 0 0 var(--selected)
-}
-
 #picks-body {
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
     font-size: 11px;
     line-height: 1.5
-}
-
-#sidebar.picks-collapsed #picks-body {
-    display: none
-}
-
-#sidebar.picks-collapsed #picks-card {
-    flex: 0 0 auto;
-    padding-bottom: 12px
-}
-
-.picks-hint {
-    color: var(--text-faint);
-    font-size: 10px;
-    line-height: 1.45;
-    margin-bottom: 6px
-}
-
-.picks-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin-bottom: 6px;
-    flex-shrink: 0
-}
-
-.picks-actions .mini {
-    font-family: var(--mono)
 }
 
 .mini.danger {
@@ -1239,14 +1369,10 @@ input[type=checkbox] {
     padding: 4px 2px
 }
 
-/* Capped at a quarter of the column: a long collection is scrolled through, never at the cost of
-   the styling editor underneath it. */
+/* However long the collection gets: the column scrolls, the list does not. */
 .picks-list {
-    overflow-y: auto;
-    min-height: 0;
-    max-height: 26vh;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent
+    display: flex;
+    flex-direction: column
 }
 
 .pick-row {
@@ -1305,7 +1431,7 @@ input[type=checkbox] {
     padding: 13px 18px 12px
 }
 
-#layers-card h2, #watershed-card h2 {
+#layers-card h2 {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1318,7 +1444,7 @@ input[type=checkbox] {
     font-family: var(--mono)
 }
 
-#layers-card h2 .title, #watershed-card h2 .title {
+#layers-card h2 .title {
     flex: 1
 }
 
@@ -1349,34 +1475,9 @@ input[type=checkbox] {
     display: none
 }
 
-/* ── the watershed selector ────────────────────────────────────────────────
-   What the last click selected, over the export and the clear. */
-#watershed-card {
-    flex: 0 0 auto;
-    padding: 13px 18px 12px;
-    border-top: 1px solid var(--border)
-}
-
-/* How many streams are selected — the same orange the readout under it counts in, so the folded
-   heading and the open card are one number in one colour. */
-#watershed-count {
-    color: var(--upstream);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0;
-    text-transform: none;
-    font-size: 13px;
-    font-weight: 700
-}
-
-#sidebar.watershed-collapsed #watershed-body {
-    display: none
-}
-
 #river-card {
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    flex: 0 1 auto;
     padding: 13px 18px 10px;
     border-top: 1px solid var(--border)
 }
@@ -1408,13 +1509,8 @@ input[type=checkbox] {
 }
 
 #river-body {
-    overflow-y: auto;
-    min-height: 0;
-    max-height: 33vh;
     font-size: 11px;
-    line-height: 1.5;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent
+    line-height: 1.5
 }
 
 #sidebar.river-collapsed #river-body {
@@ -1457,43 +1553,31 @@ input[type=checkbox] {
     font-weight: 400
 }
 
-#river-body .attr-group:first-child {
-    padding-top: 0
-}
-
 #river-body .hint {
     color: var(--text-faint);
     font-size: 10px
 }
 
 #style-body {
-    overflow-y: auto;
-    min-height: 0;
     font-size: 11px;
-    line-height: 1.5;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent
+    line-height: 1.5
 }
 
 #sidebar.style-collapsed #style-body {
     display: none
 }
 
-/* Folded away, the section is its heading row and nothing else, and the run block below it takes
-   the height back. */
+/* Folded away, the section is its heading row and nothing else. */
 #sidebar.style-collapsed #style-card {
-    flex: 0 0 auto;
-    padding-bottom: 12px
+    padding-bottom: 0
 }
 
-/* The export run reports from the bottom of the column, so it stays put whether the styling
-   section above it is open or folded. */
+/* The export run reports from the end of the column. margin-top keeps it against the bottom of the
+   window while the sections above it do not fill one, and is simply ignored once they do. */
 #sidebar-foot {
     margin-top: auto;
     display: flex;
-    flex-direction: column;
-    flex: 0 1 auto;
-    min-height: 0
+    flex-direction: column
 }
 
 #style-body select, #style-body input[type=text], #style-body input[type=number] {

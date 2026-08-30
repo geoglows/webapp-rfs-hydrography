@@ -121,13 +121,7 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
         ? `Attributes in the tiles (${attributes.length})`
         : `Attributes unavailable${attrError ? ` — ${attrError}` : ''}`,
     }));
-    if (!attributes.length) {
-      box.appendChild(el('div', {
-        class: 'hint',
-        text: 'Rules can still be written by hand, but the menu comes from the tile metadata.'
-      }));
-      return box;
-    }
+    if (!attributes.length) return box;
     const roles = [['measure', 'Measures — what to style by'], ['category', 'Categories — what to filter by'],
       ['identity', 'Identifiers — one reach each']];
     for (const [role, title] of roles) {
@@ -531,12 +525,6 @@ export function createStylePanel({mount, onChange, selection, status, pmtiles}) 
       ]),
     ]);
     spec.rules.forEach((r, i) => rulesBox.appendChild(ruleCard(r, i, shadow.has(r.id))));
-    if (!spec.rules.length) {
-      rulesBox.appendChild(el('div', {
-        class: 'hint',
-        text: 'No styling rules — every reach is drawn by the base style below. Add one from the attribute menu, or start from a preset.'
-      }));
-    }
     mount.appendChild(rulesBox);
 
     const n = counts.get(BASE_LAYER_ID);

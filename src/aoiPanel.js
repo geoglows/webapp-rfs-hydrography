@@ -1,9 +1,9 @@
 /**
- * The AOI subsetter's card: where the outlet is, what the inlets took off, and how much is left.
+ * The AOI subsetter's readout: where the outlet is, what the inlets took off, and how much is left.
  *
- * Two steps, in the order they are done, so the card reads as instructions until it is a summary.
  * Every row is a reason to take an inlet back off — which reach it is, and how much of the AOI it
- * is holding back — because that is the only decision left once the outlet is placed.
+ * is holding back — because that is the only decision left once the outlet is placed. Clearing is
+ * the column's one Clear button, shared with the other three methods.
  *
  * Built as nodes; the ids come out of the tiles, so nothing from the data becomes markup.
  */
@@ -51,21 +51,12 @@ function inletRow(inlet, {onRemove, onZoom}) {
 }
 
 /** Repaint the whole body for the current state. */
-export function renderAoi(mount, state, {onRemove, onZoom, onClear}) {
+export function renderAoi(mount, state, {onRemove, onZoom}) {
   const {outlet, inlets, count, trimmed} = state;
   const out = [];
 
-  // The hint is the instruction for the step you are actually on, not both steps at once.
-  out.push(el('div', 'picks-hint', outlet
-    ? 'Now click each inlet. The inlet and everything draining into it are cut out of the AOI. ' +
-      'Click an inlet again to put it back.'
-    : 'Click the reach at the outlet of your area of interest — everything upstream of it is ' +
-      'selected, the same as a watershed selection.'));
-
-  out.push(button('mini danger', 'Clear AOI', 'Drop the outlet and every inlet', onClear));
-
   if (!outlet) {
-    out.push(el('div', 'picks-empty', 'No outlet yet.'));
+    out.push(el('div', 'picks-empty', 'Click the outlet of your area of interest.'));
     mount.replaceChildren(...out);
     return;
   }

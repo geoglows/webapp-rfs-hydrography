@@ -28,52 +28,75 @@
     <div id="layers-body"></div>
   </div>
 
-  <div id="watershed-card">
-    <h2>
-      <button class="btn sm mode" id="watershed-mode"
-              title="One click selects every reach that drains to the reach it lands on. Press W.">
-        On
+  <!-- SELECTION METHODS · four rows, one per answer a click can give. They are not four features
+       that stack, so they read as one list you choose from: the row that is On is what a click on
+       the map means. Download, copy and clear sit above the four, because they act on whichever
+       method is on rather than on one of them; whatever the chosen method has to show — the reach,
+       the count, the collection, the inlets — is shown under all four, in the one place, so the
+       list never moves as you switch between them. -->
+  <div id="selectors-card">
+    <h2><span class="title">River Selection Explorer</span></h2>
+
+    <!-- One word each, so the three sit on one line. What each one actually does is in its
+         title — the download in particular is two GeoParquet files, not one. -->
+    <div id="selection-actions">
+      <button class="btn primary" disabled id="btn-geoparquet"
+              title="Download GeoParquet: two files, the selected reaches and the catchment polygon each of them drains.">
+        Download
       </button>
-      <span class="title">Watershed selector</span>
-      <span id="watershed-count" title="Streams in the current selection"></span>
-      <button class="btn sm" id="watershed-collapse" title="Collapse the watershed selector"></button>
-    </h2>
-    <div id="watershed-body">
-      <div id="selection-info"></div>
-      <div class="btn-row">
-        <button class="btn primary" disabled id="btn-geoparquet"
-                title="Saves two GeoParquet files: the selected reaches, then the catchment polygon each of them drains.">
-          Download GeoParquet
-        </button>
-        <button class="btn" id="btn-clear">Clear</button>
+      <button class="btn" disabled id="btn-copy"
+              title="Copy the outlet riverIds the current method is holding, one per line.">
+        Copy
+      </button>
+      <button class="btn" disabled id="btn-clear"
+              title="Empty whatever the current method is holding.">Clear</button>
+    </div>
+
+    <div id="selector-rows">
+      <div class="selector-head" id="river-select-head"
+           title="One click selects just the reach it lands on. Press R.">
+        <button class="btn sm mode" id="river-select-mode" tabindex="-1">On</button>
+        <span class="title">River Select</span>
+        <span class="clarify">(1 River)</span>
+        <span id="river-select-count" title="The reach you clicked"></span>
+      </div>
+
+      <div class="selector-head" id="watershed-head"
+           title="One click selects every reach that drains to the reach it lands on. Press W.">
+        <button class="btn sm mode" id="watershed-mode" tabindex="-1">Off</button>
+        <span class="title">Watershed Select</span>
+        <span class="clarify">(1 River + Upstreams)</span>
+        <span id="watershed-count" title="Streams in the current selection"></span>
+      </div>
+
+      <div class="selector-head" id="picks-head"
+           title="Collect a watershed outlet on every click, instead of selecting one at a time. Shift-click a river to collect one without leaving the method you are in, or press M.">
+        <button class="btn sm mode" id="picks-mode" tabindex="-1">Off</button>
+        <span class="title">Multi Select</span>
+        <span class="clarify">(Multiple Watersheds)</span>
+        <span id="picks-count" title="Watershed outlets collected">0</span>
+      </div>
+
+      <div class="selector-head" id="aoi-head"
+           title="Cut an area of interest out of a watershed: click its outlet, then click each inlet to drop it and everything that drains into it. Press A.">
+        <button class="btn sm mode" id="aoi-mode" tabindex="-1">Off</button>
+        <span class="title">AOI Subsetter</span>
+        <span class="clarify">(Rivers between 2+ points)</span>
+        <span id="aoi-count" title="Inlets trimmed off the area of interest">0</span>
       </div>
     </div>
-  </div>
 
-  <div id="aoi-card">
-    <h2>
-      <button class="btn sm mode" id="aoi-mode"
-              title="Cut an area of interest out of a watershed: click its outlet, then click each inlet to drop it and everything that drains into it. Press A.">
-        Off
-      </button>
-      <span class="title">AOI subsetter</span>
-      <span id="aoi-count" title="Inlets trimmed off the area of interest">0</span>
-      <button class="btn sm" id="aoi-collapse" title="Collapse the AOI subsetter"></button>
-    </h2>
-    <div id="aoi-body"></div>
-  </div>
-
-  <div id="picks-card">
-    <h2>
-      <button class="btn sm mode" id="picks-mode"
-              title="Collect a watershed outlet on every click, instead of selecting one at a time. Shift-click a river to collect one without leaving the method you are in, or press M.">
-        Off
-      </button>
-      <span class="title">Multi-select</span>
-      <span id="picks-count" title="Watershed outlets collected">0</span>
-      <button class="btn sm" id="picks-collapse" title="Collapse the multi-select list"></button>
-    </h2>
-    <div id="picks-body"></div>
+    <!-- One readout under the four rows: only the chosen method's block is in the page. -->
+    <div id="selector-body">
+      <div id="river-select-body">
+        <div id="river-select-info"></div>
+      </div>
+      <div id="watershed-body">
+        <div id="selection-info"></div>
+      </div>
+      <div id="picks-body"></div>
+      <div id="aoi-body"></div>
+    </div>
   </div>
 
   <div id="river-card">
@@ -85,13 +108,32 @@
     <div id="river-body"></div>
   </div>
 
-  <div id="style-card">
-    <h2>
-      <span class="title">Stream styling</span>
-      <span id="style-zoom" title="Current map zoom — every stop below sits on a half-zoom step">z2.0</span>
-      <button class="btn sm" id="style-collapse" title="Collapse the styling panel"></button>
-    </h2>
-    <div id="style-body"></div>
+  <!-- STYLING OPTIONS · the two things that change how the network is drawn, under one heading:
+       colouring it by the river names table, and the rule editor that draws everything else. -->
+  <div id="styling-card">
+    <h2><span class="title">Styling Options</span></h2>
+
+    <div id="names-card">
+      <h3>
+        <button class="btn sm mode names" id="names-mode"
+                title="Colour the network by the river names table: named reaches take a colour, everything no name covers goes grey. Press N.">
+          Off
+        </button>
+        <span class="title">River names</span>
+        <span id="names-count" title="Named rivers in the table"></span>
+        <button class="btn sm" id="names-collapse" title="Collapse the river names panel"></button>
+      </h3>
+      <div id="names-body"></div>
+    </div>
+
+    <div id="style-card">
+      <h3>
+        <span class="title">Stream styling</span>
+        <span id="style-zoom" title="Current map zoom — every stop below sits on a half-zoom step">z2.0</span>
+        <button class="btn sm" id="style-collapse" title="Collapse the styling panel"></button>
+      </h3>
+      <div id="style-body"></div>
+    </div>
   </div>
 
   <div id="sidebar-foot">
@@ -144,6 +186,7 @@
         <span>Show the map legend</span>
       </label>
     </div>
+    <div class="modal-foot" id="build-stamp" title="When this build of the app was made"></div>
   </div>
 </div>
 

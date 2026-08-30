@@ -65,10 +65,18 @@ export const BASEMAPS = [
   {id: 'imagery-labels', label: 'Imagery + Labels (Esri)', tileSets: ['imagery', 'places']},
 ];
 
+/**
+ * The one the map opens on. Dark grey rather than the first entry in the list, because the network
+ * is drawn in light saturated colours that were chosen against a dark ground - on the light basemap
+ * they sit at about 1.8:1 and wash out. The list keeps its own order: light grey still reads first
+ * in the picker, where the order is about finding a basemap, not about which one you start on.
+ */
+const DEFAULT_BASEMAP = 'gray-dark';
+
 /** A tile set's source and layer share one id, because there is exactly one layer per set. */
 const tileSetId = key => `basemap-${key}`;
 
-let basemap = BASEMAPS[0].id;
+let basemap = DEFAULT_BASEMAP;
 
 export const currentBasemap = () => basemap;
 
@@ -86,7 +94,7 @@ export function setBasemap(id) {
 }
 
 const GROUP_SOURCE = 'group';
-const GROUP = '#8b5cf6';
+const GROUP = '#A78BFA';
 let groupLayer = 'groups';
 let groupIdField = 'groupId';
 

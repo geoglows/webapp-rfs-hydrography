@@ -18,7 +18,7 @@ export const COLORS = {
    * The multi-select collection is drawn in the same two, because a collected watershed is the
    * same kind of thing as a selected one; the map tells them apart by which is on it at the time.
    */
-  stream: '#4A90E2', upstream: '#F5A623', outlet: '#B45309',
+  stream: '#3B82F6', upstream: '#F5A623', outlet: '#B45309',
 };
 
 /** Upstream reaches keep the ~2.2x width bump the app has always drawn them with. */
@@ -216,7 +216,14 @@ export const inRangeExpr = sel => {
   return spans.length === 1 ? spanExpr(spans[0]) : ['any', ...spans.map(spanExpr)];
 };
 
-export function compileLayers(spec, {highlight = false, selection = null} = {}) {
+/**
+ * `names` swaps every rule's colour for one expression over riverIndex - the River Names mode. It
+ * replaces the spec's colours rather than filtering anything, so the network stays exactly as wide
+ * and as filtered as the panel left it and only the hue changes. The selection highlight still wins
+ * over it: selected from not selected is the one distinction on this map that has to hold, whatever
+ * else is being shown.
+ */
+export function compileLayers(spec, {highlight = false, selection = null, names = null} = {}) {
   const rules = (spec.rules ?? []).filter(r => r.enabled !== false);
   const globalFilter = conditionsExpr(spec.filter?.conditions, spec.filter?.match);
   const ruleFilters = rules.map(r => conditionsExpr(r.conditions, r.match));
@@ -225,10 +232,18 @@ export function compileLayers(spec, {highlight = false, selection = null} = {}) 
   const isUp = selection ? inRangeExpr(selection) : null;
   const on = highlight && isUp != null;
 
-  const colorOut = v => (on ? ['case', isUp, COLORS.upstream, v] : v);
-  const widthOut = v => (on
-    ? ['case', isUp, Math.round(v * UP_WIDTH_SCALE * 100) / 100, v]
-    : v);
+  const colorOut = v => {
+    const base = names ? names.color : v;
+    return on ? ['case', isUp, COLORS.upstream, base] : base;
+  };
+  const widthOut = v => {
+    // A named reach is drawn several points heavier than the rest of the network, so the extent a
+    // name covers is legible at a glance instead of being a colour you have to hunt for. The
+    // selection keeps its own bump on top: an upstream reach is the selection's width whether or
+    // not it happens to be named.
+    const wide = names ? ['case', names.named, Math.round(v * names.scale * 100) / 100, v] : v;
+    return on ? ['case', isUp, Math.round(v * UP_WIDTH_SCALE * 100) / 100, wide] : wide;
+  };
   const opacityOut = v => (scoped
     ? ['case', isUp, v, Math.round(v * OUT_OF_SCOPE_OPACITY * 1000) / 1000]
     : v);
