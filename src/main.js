@@ -2,7 +2,7 @@ import './style.css';
 import maplibregl from 'maplibre-gl';
 import {URLS, V3_BASE} from './config.js';
 import {upstreamRange} from './data.js';
-import {applyHighlight, applyInlets, applyPicks, applyStreamStyle, archive, clearHighlight, currentSelection, flyToPick, hoverRegions, initMap, map, regionsAt, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
+import {applyHighlight, applyInlets, applyPicks, applyStreamStyle, archive, clearHighlight, currentSelection, fitRiverBounds, flyToPick, hoverRegions, initMap, map, regionsAt, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
 import {compileLayers} from './streamStyle.js';
 import {loadRiverNames, namesStyle, riverNames} from './riverNames.js';
 import {loadStreamAttributes} from './streamAttributes.js';
@@ -17,6 +17,10 @@ import {fmt, progress, progressHistory, stageHistory, stages} from './ui.js';
 import {heroIcon} from './icons.js';
 import {initMapControls, syncLayerPicker} from './mapControls.js';
 import {initSettings, onSetting} from './settings.js';
+import {createDataSettings} from './dataSettings.js';
+import {createRiverSearch} from './riverSearch.js';
+import {watch as watchRiverNames} from './riverNamesData.js';
+import {dropLegacyDatabase} from './db.js';
 
 let sel = null;
 /** The whole watershed record of the reach last clicked, whatever the method made of it. */
@@ -101,6 +105,76 @@ function selectOutlet(at) {
 }
 
 /**
+ * A river the search box found, selected as if it had been clicked — the search is another way in
+ * to the same selection, not a mode of its own.
+ *
+ * A name and an ID arrive as different things, so they land differently. **A name** is a whole
+ * river: the table gives the run of riverIndex it covers, so the span is selected outright and the
+ * camera frames the published extent rather than traveling to the mouth. Neither needs a lookup.
+ * **An ID** is one reach, and goes through selectOutlet like a click does — so it means the reach in
+ * river mode and the network above it in watershed mode, which is what the method that is on says
+ * it means.
+ *
+ * Deliberately does not touch the AOI or the collection, in any mode. A search is typed into a
+ * dialog over the map; making it place an AOI inlet or add to the picks would be a side effect
+ * nobody asked for.
+ */
+function goToRiver(reach, named) {
+  // The three fields a found reach actually has. The panel below renders whatever it is handed as
+  // that reach's attributes, and where the camera is going is not one of them.
+  showRiverAttributes({
+    riverId: reach.riverId, riverIndex: reach.riverIndex, upstreamCount: reach.upstreamCount,
+  });
+  if (!named) {
+    selectOutlet(reach);
+    flyToPick({lat: reach.lat, lon: reach.lon});
+    upgradeFromTiles(reach.riverId);
+    return;
+  }
+  const {lo, hi} = named.span;
+  // The mouth reach is the outlet the highlight draws over the span, and the span is the name's own
+  // — not the watershed above the mouth, which is usually larger and is a different river.
+  const rec = {
+    outletId: reach.riverId,
+    riverIndex: hi,
+    upstreamCount: hi - lo,
+    lo,
+    hi,
+    count: hi - lo + 1,
+    // A named river is known by its span, not by which group publishes it, and the names table has
+    // no group in it. paintActions() reads this: the GeoParquet export needs one and stays off.
+    groupId: null,
+    strahlerOrder: null,
+  };
+  lastRec = rec;
+  setSelection(rec, [{lo, hi}]);
+  fitRiverBounds(named.bbox, {lat: reach.lat, lon: reach.lon});
+}
+
+/**
+ * Redo the selection from the tiles once the camera has arrived on a reach found by ID.
+ *
+ * The metadata store answers with the four numbers a selection is made of — riverId, riverIndex,
+ * upstream count, and where the reach is — and not with the rest of what the tiles carry: not the
+ * group its geometry is published in, which the GeoParquet export needs, and not the attributes the
+ * panel below lists for a clicked reach. Both arrive with the tiles, so this waits for them rather
+ * than asking the store for a second thing it cannot answer.
+ *
+ * A reach too small to be drawn at the zoom the camera stopped at is simply not there to be found,
+ * and stays as the store described it: selected, framed, and named by its id. The guard is what
+ * keeps a click made while the tiles were loading from being overwritten by this.
+ */
+function upgradeFromTiles(riverId) {
+  map.once('idle', () => {
+    const hit = map.queryRenderedFeatures({layers: streamLayerIds()})
+      .find(f => f.properties?.riverId === riverId);
+    if (!hit || sel?.outletId !== riverId) return;
+    showRiverAttributes(hit.properties);
+    selectOutlet(hit.properties);
+  });
+}
+
+/**
  * The picked reach, in the river selector's own card. The full attribute list still lands in the
  * River attributes section below — this is the one line that says which reach those belong to.
  */
@@ -159,7 +233,9 @@ let busy = false;
 
 function paintActions() {
   const held = mode === 'multi' ? picks.count() > 0 : sel !== null;
-  $('btn-geoparquet').disabled = busy || sel === null;
+  // The geometry is published per group, so a selection that does not know its group cannot be
+  // exported — which today means a river found by name, whose span comes from the names table.
+  $('btn-geoparquet').disabled = busy || sel === null || sel.groupId == null;
   $('btn-copy').disabled = !held;
   $('btn-clear').disabled = !held;
 }
@@ -614,6 +690,9 @@ loadRiverNames()
   .then(() => {
     $('names-mode').disabled = false;
     paintNames();
+    // The copy on the device is good until the 5th of next month; this is what notices a session
+    // that runs past it.
+    watchRiverNames();
   })
   .catch(err => {
     namesError = err.message;
@@ -695,7 +774,17 @@ initMapControls();
 // hands out the stored value rather than the fallback.
 initSettings();
 $('btn-settings').replaceChildren(heroIcon('cog-6-tooth'));
+// What the two apps have cached on this device, and the buttons to fetch or erase it.
+createDataSettings();
 onSetting('legend', on => $('legend-overlay').classList.toggle('hidden', !on));
+
+// ── find a river ─────────────────────────────────────────────────────────────
+// The magnifying glass in the header. The dialog itself is RFS v3's, and so are the two datasets it
+// searches: both apps keep them in the one IndexedDB database, so a lookup downloaded in either is
+// read by the other. dropLegacyDatabase() reclaims the space the viewer used before that was true.
+dropLegacyDatabase();
+$('btn-search').replaceChildren(heroIcon('magnifying-glass'));
+createRiverSearch({onFound: goToRiver, onClear: () => clearSelection()});
 
 let ready = false;
 
@@ -726,6 +815,8 @@ let ready = false;
     showZoom();
     loadStreamAttributes(archive).then(info => stylePanel.setAttributes(info));
     progress.hide();
+    // Now there is something to select on, so the search box can be opened.
+    $('btn-search').disabled = false;
     ready = true;
   } catch (err) {
     progress.hide();

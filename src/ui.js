@@ -10,6 +10,26 @@ const detailEl = $('progress-detail');
 export const fmt = n => n.toLocaleString();
 export const mb = b => `${(b / 1e6).toFixed(2)} MB`;
 
+// The phases a cached dataset's build reports, in the order it reports them. RFS v3 says the same
+// words for the same downloads, which is the point: they are the same downloads.
+const DATA_PHASES = {
+  download: 'Downloading',
+  sort: 'Building lookup',
+  verify: 'Verifying',
+  store: 'Saving',
+};
+
+/**
+ * "Downloading 42%" — one build's progress as a line of text. Watched from two places now, the
+ * search box and the Settings row, so it reads the same in both. A percentage rather than a count:
+ * the download reports per chunk over hundreds of chunks, and nothing else stays legible at that
+ * rate.
+ */
+export function dataProgress({phase, done, total}) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return `${DATA_PHASES[phase] ?? 'Starting…'} ${pct}%`;
+}
+
 /** Elapsed/remaining seconds as m:ss, which reads faster than "97.4 s" at a glance. */
 export const clock = s => {
   if (!isFinite(s) || s < 0) return '';

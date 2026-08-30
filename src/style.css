@@ -178,6 +178,15 @@ body {
     gap: var(--gap, 8px)
 }
 
+.wrap {
+    flex-wrap: wrap
+}
+
+/* A wrapped row of buttons shares its width out evenly — the settings footer's sweeping pair. */
+.wrap > .btn {
+    flex: 1 1 auto
+}
+
 /* !important because the classes that lay a thing out set their own display — .btn is a flex box,
    .col a flex column — and would otherwise outrank this. */
 .hidden, [hidden] {
@@ -689,6 +698,15 @@ input[type=checkbox] {
     flex-direction: column
 }
 
+/* One-line entry forms — find a river by name or ID — where the input shares its row with a submit
+   button. Short enough that dead centre reads as low on the page, so it sits about a third of the
+   way down. Same placement and width as the same dialog in RFS v3. */
+.modal.entry {
+    width: min(540px, calc(100vw - 32px));
+    align-self: start;
+    margin-top: min(22vh, 180px)
+}
+
 .modal-head {
     flex: 0 0 auto;
     display: flex;
@@ -740,6 +758,49 @@ input[type=checkbox] {
     flex: 0 0 auto
 }
 
+/* ── Downloaded data · one row per cached dataset ──────────────────────────
+   Ported from RFS v3 along with src/dataSettings.js. */
+.data-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px
+}
+
+/* the two actions, which --gap would otherwise zero along with the rows */
+.data-row .row {
+    gap: 10px
+}
+
+.data-size {
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    font-size: 14px
+}
+
+/* progress and errors belong under the row they describe, not beside it */
+.data-row .status {
+    grid-column: 1 / -1
+}
+
+.data-row .status:empty {
+    display: none
+}
+
+.data-foot {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    --gap: 6px
+}
+
+/* the delete half of a pair — the other half being a download, which is not destructive */
+.btn.danger:hover:not(:disabled) {
+    color: var(--danger-text);
+    border-color: var(--danger)
+}
+
 /* The last line of the settings dialog: which build is running. Quiet on purpose — it is there to
    be quoted in a bug report, not read. */
 .build-stamp {
@@ -748,6 +809,99 @@ input[type=checkbox] {
     font-family: var(--mono);
     font-size: 12px;
     opacity: .7
+}
+
+/* ── Search · the Find a river dialog ──────────────────────────────────────
+   Ported from RFS v3 along with src/riverSearch.js; the two dialogs are the same dialog. */
+
+/* a caption over the input it names */
+.field label {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 600;
+    margin-bottom: 6px
+}
+
+.field + .field {
+    margin-top: 14px
+}
+
+input[aria-invalid=true] {
+    border-color: var(--danger)
+}
+
+/* The name box's input should take the room the two buttons beside it leave. */
+#search-river-name, #search-river-id {
+    flex: 1 1 auto;
+    min-width: 0
+}
+
+/* A line rewritten as something proceeds: download progress, a search result. Its height is held so
+   the dialog does not resize as the text comes and goes. */
+.status {
+    margin: 0;
+    min-height: 1.2em;
+    font-variant-numeric: tabular-nums
+}
+
+/* a hint that is a rejection rather than an aside — see say() in src/riverSearch.js */
+.hint.error {
+    color: var(--danger);
+    font-weight: 600
+}
+
+/* The ID box, under the name box. Ruled off rather than merely spaced: they are two questions, and
+   the results list belonging to the one above needs a visible end. */
+.search-second {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border)
+}
+
+/* The list a name search fills. Capped rather than allowed to grow the dialog: a query like "san"
+   matches a dozen rivers, and a dialog that resizes under the person typing into it is worse than
+   one that scrolls. */
+.search-results {
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 8px 0 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface2)
+}
+
+/* A button rather than a styled div, so it is reachable and operable from the keyboard without this
+   file having to reimplement any of that. */
+.search-hit {
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer
+}
+
+.search-hit:last-child {
+    border-bottom: 0
+}
+
+.search-hit:hover, .search-hit:focus-visible {
+    background: var(--surface)
+}
+
+.search-hit b {
+    display: block
+}
+
+/* The disambiguating line — country, what it flows into, the system it belongs to. Dimmer than the
+   name because it is read only when two rows share one. */
+.search-hit .hint {
+    display: block;
+    margin: 1px 0 0
 }
 
 /* The surface every floating thing is drawn on. */

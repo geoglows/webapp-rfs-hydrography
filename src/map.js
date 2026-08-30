@@ -521,6 +521,33 @@ export function flyToPick({lon, lat}) {
   map.easeTo({center: [lon, lat], zoom: Math.max(map.getZoom(), 8), duration: 700});
 }
 
+/**
+ * A river found by name, which is a whole river rather than a reach — so the camera frames its
+ * published extent instead of travelling to a point on it.
+ *
+ * The names table carries the bounding box of every reach the name covers, which is the only way
+ * either app can frame a river at all: the reaches are in vector tiles that are not loaded until the
+ * camera is already looking at them. Flying to the mouth instead would put the Amazon on screen as
+ * an estuary, with the river off the west edge.
+ *
+ * Falls back to the point when a row carries no box — an older release of the table has none, and a
+ * river is still worth going to.
+ */
+export function fitRiverBounds(bbox, at) {
+  if (!map) return;
+  if (!bbox || bbox.length !== 4) return flyToPick(at ?? {});
+  const [west, south, east, north] = bbox;
+  const {width} = map.getContainer().getBoundingClientRect();
+  map.fitBounds([[west, south], [east, north]], {
+    // A river narrower than the padding cannot be fitted at all, so the padding is capped at a
+    // share of the window rather than being a flat number of pixels.
+    padding: Math.min(80, Math.round(width * 0.12)),
+    // A single short reach has a near-degenerate box, and fitting one lands the camera at z22 on a
+    // stream. 8 is the zoom flyToPick treats as close enough to read one.
+    maxZoom: 8,
+  });
+}
+
 // ── the catchments ───────────────────────────────────────────────────────────
 function syncCatchmentHighlight() {
   if (!map?.getLayer('catchment-fill')) return;

@@ -140,6 +140,15 @@ const stampBuildDate = () => {
 // same bundle works at /, at /rfs-hydrography-explorer/, and under a PORTAL_BASE prefix.
 export default defineConfig({
   plugins: [serveData(), stampBuildDate()],
+  // Vite crawls the page's imports to decide what to pre-bundle, and it does not crawl into
+  // workers. The riverId lookup's zarr reads are reachable from nowhere else, so in dev they were
+  // discovered only when someone pressed Download — at which point Vite re-optimized, and the
+  // worker's already-loaded module ids went stale: a 504 on numcodecs/blosc, a worker that never
+  // answers, and a download that silently never starts. Naming them here has them bundled before
+  // the server is listening.
+  optimizeDeps: {
+    include: ['riverforecastsystem/v3', 'riverforecastsystem/v3/hydrography', 'numcodecs/blosc'],
+  },
   build: {
     target: ['es2020', 'safari14'],
     // The geometry worker pulls in hyparquet + its compressors, which are large and only needed

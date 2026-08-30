@@ -18,13 +18,14 @@
  * which mean nothing except against the exact network `streams.pmtiles` was cut from — so the two
  * have to travel together. A copy compiled into this app would keep painting confidently after the
  * network was rebuilt underneath it, pointing at reach numbers that had moved. It is also small and
- * regenerated whenever a name is added, so a fetch is the cheap half of that trade.
+ * regenerated whenever a name is added, so a fetch is the cheap half of that trade. The fetch and
+ * the copy kept on the device belong to riverNamesData.js, which the search box reads too.
  *
  * Two of the six colours the palette was drawn from never reach this file: the blue belongs to the
  * rivers themselves, which is what unnamed water keeps, and the purple belongs to the group
  * boundaries. A colour that already means something on this map cannot also mean "a named river".
  */
-import {URLS} from './config.js';
+import {load as loadNamesTable, payload} from './riverNamesData.js';
 
 /**
  * How much heavier a named reach is drawn. A multiple rather than a fixed number of pixels, so the
@@ -68,15 +69,18 @@ function compile(d) {
 }
 
 /**
- * Fetch and compile the table. Throws if it is missing or malformed — a data root published before
- * this file existed simply has no names, and the caller turns the mode off rather than the app
- * failing to start over a layer nobody has asked for yet.
+ * Compile the table, fetching it if nothing has yet. Throws if it is missing or malformed — a data
+ * root published before this file existed simply has no names, and the caller turns the mode off
+ * rather than the app failing to start over a layer nobody has asked for yet.
  */
 export async function loadRiverNames() {
   if (names) return names;
-  const res = await fetch(URLS.riverNames);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const d = await res.json();
+  // riverNamesData.js owns the fetch and the copy on the device, because the search box next door
+  // reads the same file — whichever asks first is the one that fetches it, and neither refetches it
+  // on the next reload. The rows it prepares are for searching; the parts this file paints from sit
+  // beside them in the payload.
+  await loadNamesTable();
+  const d = payload();
   if (!Array.isArray(d?.bounds) || !Array.isArray(d?.palette) || !Array.isArray(d?.rivers)) {
     throw new Error('riverNames.json is not the shape this app reads');
   }

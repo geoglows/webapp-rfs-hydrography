@@ -15,6 +15,9 @@
     </a>
     <h1>RFS Hydrography Explorer</h1>
     <div class="row">
+      <!-- off until the map is up: a river found before there is a map to paint it on is not found -->
+      <button aria-label="Find a river by name or ID" class="btn icon" disabled id="btn-search"
+              title="Find a river by name or ID"></button>
       <button class="btn icon" id="btn-theme" title="Toggle light / dark theme"></button>
       <button class="btn icon" id="btn-settings" title="Settings"></button>
     </div>
@@ -172,6 +175,39 @@
   </div>
 </div>
 
+<!-- Two boxes, because a name and an ID are two different questions — see src/riverSearch.js. -->
+<div class="backdrop hidden" id="search-modal">
+  <div aria-labelledby="search-modal-title" aria-modal="true" class="card modal entry" role="dialog">
+    <div class="modal-head">
+      <h3 id="search-modal-title">Find a river</h3>
+      <button aria-label="Close" class="btn sm" data-close="search-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <form autocomplete="off" class="field" id="search-name-form">
+        <label for="search-river-name">River name</label>
+        <div class="row">
+          <input aria-autocomplete="list" aria-controls="search-results" aria-expanded="false"
+                 id="search-river-name" placeholder="e.g. Colorado" role="combobox" type="text"/>
+          <button class="btn primary" type="submit">Search</button>
+          <button class="btn" id="search-clear" type="button"
+                  title="Remove the highlighted river from the map">Clear</button>
+        </div>
+      </form>
+      <div aria-label="Matching rivers" class="search-results hidden" id="search-results"
+           role="listbox"></div>
+      <div aria-live="polite" class="hint status" id="search-name-status" role="status"></div>
+
+      <form autocomplete="off" class="field search-second" id="search-id-form">
+        <label for="search-river-id">River ID</label>
+        <div class="row">
+          <input id="search-river-id" inputmode="numeric" placeholder="e.g. 760021611" type="text"/>
+          <button class="btn primary" type="submit">Search</button>
+        </div>
+      </form>
+      <div aria-live="polite" class="hint status" id="search-id-status" role="status"></div>
+    </div>
+  </div>
+</div>
 <div class="backdrop hidden" id="settings-modal">
   <div aria-labelledby="settings-modal-title" aria-modal="true" class="card modal" role="dialog">
     <div class="modal-head">
@@ -185,6 +221,20 @@
         <span>Show the map legend</span>
       </label>
       <!-- stamped at build time by stampBuildDate() in vite.config.js; filled in initSettings() -->
+      <h4>Downloaded Data</h4>
+      <p class="hint">
+        This site keeps local copies of some datasets for better performance. They are shared with
+        the RFS v3 hydroviewer, can be redownloaded at any time, and are safe to delete.
+      </p>
+      <!-- rows built by createDataSettings() in src/dataSettings.js, from the registry in datasets.js -->
+      <div class="col" id="data-list"></div>
+      <div class="col data-foot">
+        <div class="hint status" id="data-foot-status"></div>
+        <div class="row wrap">
+          <button class="btn" id="btn-download-all">Download everything</button>
+          <button class="btn" id="btn-delete-all">Delete everything</button>
+        </div>
+      </div>
       <p class="hint build-stamp">Build <span id="build-date"></span></p>
     </div>
   </div>
