@@ -11,10 +11,23 @@
  * switches a layer on, the legend row that names its colour, and the sync that greys out both when
  * the open dataset does not publish those tiles.
  */
-import {BASEMAPS, currentBasemap, layersPresent, layersVisible, setBasemap, setLayersVisible} from './map.js';
+import {BASEMAPS, currentBasemap, layersPresent, layersVisible, setBasemap, setLayersVisible,
+  setStreamsVisible, streamLayerIds} from './map.js';
 import {calciteIcon} from './icons.js';
 
 const LAYERS = [
+  {
+    // First, because it is the layer the app is about: everything else is drawn to be read against
+    // it. `layers` is a function here rather than a list - the styled network is recompiled on
+    // every rule edit and selection, so its layer ids are only knowable at the moment of asking -
+    // and `onToggle` goes through map.js so the choice outlives those rebuilds.
+    label: 'Streams',
+    layers: streamLayerIds,
+    onToggle: setStreamsVisible,
+    swatch: 'stream',
+    title: 'The river network itself. Turning it off leaves the polygons and the selection ' +
+      'behind, for reading a catchment or a group boundary without lines over it.',
+  },
   {
     label: 'Group boundaries',
     layers: ['group-fill', 'group-line'],
@@ -44,6 +57,9 @@ const BASEMAP_TITLE = 'Light Gray is the muted cartographic base the stream colo
   'place names over it, or bare so nothing is drawn over the banks.';
 
 const $ = id => document.getElementById(id);
+
+/** A layer entry's ids, which for the styled network can only be asked for, not stored. */
+const layerIds = layer => (typeof layer.layers === 'function' ? layer.layers() : layer.layers);
 
 /**
  * The dropdown: the button toggles its menu and a click anywhere else closes it. Returns the close,
@@ -87,7 +103,8 @@ function initLayerPicker() {
     swatch.className = `swatch ${layer.swatch}`;
     row.append(box, name, swatch);
     box.addEventListener('change', () => {
-      setLayersVisible(layer.layers, box.checked);
+      if (layer.onToggle) layer.onToggle(box.checked);
+      else setLayersVisible(layerIds(layer), box.checked);
       syncLayerPicker();
     });
     body.append(row);
@@ -115,8 +132,9 @@ function initLayerPicker() {
  */
 export function syncLayerPicker() {
   for (const layer of LAYERS) {
-    const present = layersPresent(layer.layers);
-    const on = present && layersVisible(layer.layers);
+    const ids = layerIds(layer);
+    const present = layersPresent(ids);
+    const on = present && layersVisible(ids);
     layer.box.checked = on;
     layer.box.disabled = !present;
     layer.row.classList.toggle('unavailable', !present);

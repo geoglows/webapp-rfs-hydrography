@@ -4,7 +4,7 @@ import {URLS, V3_BASE} from './config.js';
 import {upstreamRange} from './data.js';
 import {applyHighlight, applyInlets, applyPicks, applyStreamStyle, archive, clearHighlight, currentSelection, fitRiverBounds, flyToPick, hoverRegions, initMap, map, regionsAt, setSelectionHighlightVisible, streamLayerIds,} from './map.js';
 import {compileLayers} from './streamStyle.js';
-import {loadRiverNames, namesStyle, riverNames} from './riverNames.js';
+import {loadRiverNames, nameAt, namesStyle, PALETTE, riverNames, UNNAMED} from './riverNames.js';
 import {loadStreamAttributes} from './streamAttributes.js';
 import {createStylePanel} from './stylePanel.js';
 import {renderRiverAttributes} from './riverPanel.js';
@@ -221,6 +221,22 @@ function showRiverAttributes(props) {
   renderRiverAttributes($('river-body'), props);
   const id = props?.riverId;
   $('river-card-id').textContent = id == null ? '' : String(id);
+
+  // The name is not one of the reach's attributes — the tiles carry no such field — so it is
+  // resolved from the names table by riverIndex and shown in the heading beside the id rather than
+  // among the rows below, which are what the tiles actually say.
+  const slot = $('river-card-name');
+  const river = props == null ? null : nameAt(props.riverIndex);
+  const known = riverNames() != null;
+  slot.classList.toggle('unnamed', river == null);
+  slot.textContent = props == null ? '' : river ? river.name : known ? 'unnamed' : '';
+  slot.title = river
+    ? [river.name,
+       river.watershed && river.watershed !== river.name ? `${river.watershed} watershed` : null,
+       river.country,
+       'The smallest named river covering this reach — an unnamed tributary reads as the river it '
+       + 'flows into.'].filter(Boolean).join('\n')
+    : props == null ? '' : known ? 'No name in the table covers this reach.' : '';
 }
 
 /**
@@ -295,7 +311,7 @@ function applyStyle() {
   // The legend swatch has to be the colour the line on the map actually is. With the names mode on
   // the network no longer has one colour, so the swatch stands for the unnamed reaches — which the
   // mode leaves in the app's own blue precisely so that the network still reads as itself.
-  const base = names ? riverNames().unnamed : spec.base.color[0]?.value;
+  const base = names ? UNNAMED : spec.base.color[0]?.value;
   if (base) document.documentElement.style.setProperty('--stream', base);
 }
 
@@ -645,8 +661,8 @@ function paintNames() {
   }
   $('names-count').textContent = fmt(n.riverCount);
   $('names-body').replaceChildren(
-    row(n.palette, 'Named'),
-    row([n.unnamed], 'No name in the table'),
+    row(PALETTE, 'Named'),
+    row([UNNAMED], 'No name in the table'),
   );
 }
 

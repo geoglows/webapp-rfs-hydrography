@@ -80,6 +80,7 @@ let basemap = DEFAULT_BASEMAP;
 
 export const currentBasemap = () => basemap;
 
+
 const basemapById = id => BASEMAPS.find(b => b.id === id) ?? BASEMAPS[0];
 
 export function setBasemap(id) {
@@ -448,6 +449,9 @@ export function applyStreamStyle(layers) {
     }
     applied.set(l.id, l);
   }
+
+  // Layers added above start visible; if the network is switched off, put it back off.
+  if (!streamsOn) setLayersVisible(ids, false);
 }
 
 /** The selected outlet's own line. Off when the panel is previewing the style without app state. */
@@ -460,6 +464,22 @@ export function setSelectionHighlightVisible(visible) {
 }
 
 // ── layer visibility ─────────────────────────────────────────────────────────
+/**
+ * Whether the network is drawn at all.
+ *
+ * Kept here rather than read off the map, because the stream layers are torn down and rebuilt
+ * whenever the style changes - a rule edit, a selection, the names mode going on - and a layer that
+ * has just been added is visible. Without somewhere to remember the choice, the network would come
+ * back every time anything else was touched. `applyStreamStyle` re-applies it on the way out.
+ */
+let streamsOn = true;
+
+/** Show or hide the whole network. Survives the restyles that rebuild the layers. */
+export function setStreamsVisible(visible) {
+  streamsOn = visible;
+  setLayersVisible(streamLayerIds(), visible);
+}
+
 export function setLayersVisible(ids, visible) {
   const v = visible ? 'visible' : 'none';
   for (const id of ids) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', v);

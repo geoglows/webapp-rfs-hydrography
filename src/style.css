@@ -1600,6 +1600,25 @@ input[aria-invalid=true] {
     flex: 1
 }
 
+/* The river's name, beside the id. Cased as written rather than upper like the heading around it:
+   it is a proper noun out of the names table, and "RIO CUNENE" is not what the table says. */
+#river-card-name {
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    max-width: 14em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
+#river-card-name.unnamed {
+    color: var(--muted);
+    font-weight: 400;
+    font-style: italic
+}
+
 /* The riverId beside the heading, so a folded card still says which reach it is holding. */
 #river-card-id {
     color: var(--selected-text);

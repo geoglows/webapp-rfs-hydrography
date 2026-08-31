@@ -21,11 +21,28 @@
  * regenerated whenever a name is added, so a fetch is the cheap half of that trade. The fetch and
  * the copy kept on the device belong to riverNamesData.js, which the search box reads too.
  *
- * Two of the six colours the palette was drawn from never reach this file: the blue belongs to the
- * rivers themselves, which is what unnamed water keeps, and the purple belongs to the group
- * boundaries. A colour that already means something on this map cannot also mean "a named river".
+ * The colours live here, not in the file. What arrives from the generator is a slot number per
+ * river; what a slot looks like is this app's business, which is what lets the palette be redrawn
+ * without regenerating anything.
  */
 import {load as loadNamesTable, payload} from './riverNamesData.js';
+/**
+ * Four of a six-colour set specified by hand — the palette as of commit c3084fb. The other two are
+ * spoken for: the blue is the rivers' own colour, which is what unnamed water keeps below, and the
+ * purple belongs to the group boundaries, so neither can also mean "a named river".
+ *
+ * Slot 3 is a near-white. It measures 1.24:1 against a light basemap and 1.20:1 against the dark one
+ * the app opens on, where unnamed water sits at 3.09:1 — so a river painted in it reads as less
+ * marked than an unnamed one. That is a known defect of this set, not a subtlety; see the README for
+ * what the alternatives cost. It is here because it is what is committed.
+ */
+export const PALETTE = ['#FBBF24', '#34D399', '#FCA5A5', '#E5E7EB'];
+
+/**
+ * Unnamed reaches keep exactly what the network already draws itself in, at its own width. Named
+ * water is the only thing the mode adds, which is what makes it read.
+ */
+export const UNNAMED = '#3B82F6';
 
 /**
  * How much heavier a named reach is drawn. A multiple rather than a fixed number of pixels, so the
@@ -42,30 +59,48 @@ let names = null;
 export const riverNames = () => names;
 
 /**
- * The two `step` expressions, built once when the file arrives: one over every reach on the map for
- * the colour, and the same boundaries again as a predicate for the width ramp. Kept rather than
- * rebuilt, because they are identical every time the mode goes on and reassembling an 800-stop
- * array on each restyle would be the one expensive thing in a path that runs on every zoom, every
- * rule edit and every click.
+ * The one `step` expression the mode is built on: reach in, **bin number** out, exactly the numbers
+ * the generator assigned — 0..slots-1 for a named river, -1 for unnamed water.
+ *
+ * The bin is the thing that comes from the data, and it is the only large array here. Colour and
+ * width are then read *off* the bin by two small expressions that name it as their input, so a
+ * palette change rewrites seven entries rather than a thousand stops, and the two channels cannot
+ * disagree about which reaches are named. Built once when the file arrives: it is identical every
+ * time the mode goes on, and reassembling it on each restyle would be the one expensive thing in a
+ * path that runs on every zoom, every rule edit and every click.
  */
 function compile(d) {
-  const slot = i => (i < 0 ? d.unnamed : d.palette[i]);
-  const color = ['step', ['get', 'riverIndex'], slot(d.first)];
-  const named = ['step', ['get', 'riverIndex'], d.first >= 0];
-  for (let i = 0; i < d.bounds.length; i++) {
-    color.push(d.bounds[i], slot(d.stops[i]));
-    named.push(d.bounds[i], d.stops[i] >= 0);
-  }
+  const bin = ['step', ['get', 'riverIndex'], d.first];
+  for (let i = 0; i < d.bounds.length; i++) bin.push(d.bounds[i], d.stops[i]);
   return {
-    palette: d.palette,
-    unnamed: d.unnamed,
+    slots: d.slots,
+    bin,
+    // Smallest span first, which is the order `nameAt` needs: the winner on a reach is the
+    // innermost named river containing it, the same rule the colouring paints by.
+    bySize: [...d.rivers].sort((a, b) => (a.hi - a.lo) - (b.hi - b.lo)),
     riverCount: d.rivers.length,
     namedReaches: d.namedReaches,
     watershedCount: new Set(d.rivers.map(r => r.outletRiverId)).size,
     rivers: d.rivers,
-    color,
-    named,
+    // Everything named is everything the bin did not send to -1.
+    named: ['>=', bin, 0],
   };
+}
+
+/**
+ * The palette applied to the bins: `match` the bin number, one arm per slot, and let the fallback
+ * take -1.
+ *
+ * Truncated to the bins actually in play rather than trusted to be the right length. A palette
+ * shorter than the generator's SLOTS would otherwise resolve a real bin to `undefined` and paint
+ * that reach the fallback colour, which is the one reserved for meaning "no name" — a wrong answer
+ * that looks like a correct one.
+ */
+function colorExpr() {
+  const expr = ['match', names.bin];
+  for (let i = 0; i < Math.min(PALETTE.length, names.slots); i++) expr.push(i, PALETTE[i]);
+  expr.push(UNNAMED);
+  return expr;
 }
 
 /**
@@ -81,13 +116,31 @@ export async function loadRiverNames() {
   // beside them in the payload.
   await loadNamesTable();
   const d = payload();
-  if (!Array.isArray(d?.bounds) || !Array.isArray(d?.palette) || !Array.isArray(d?.rivers)) {
+  if (!Array.isArray(d?.bounds) || !Array.isArray(d?.stops) || !Array.isArray(d?.rivers)) {
     throw new Error('riverNames.json is not the shape this app reads');
   }
   names = compile(d);
   return names;
 }
 
+/**
+ * The named river a reach belongs to, or null if no name covers it.
+ *
+ * The answer is the *smallest* named span containing the reach, which is what makes it read as "the
+ * name of the exact segment you clicked, or the river you are an unnamed tributary of". A reach on
+ * the Bighorn answers Bighorn River rather than Missouri River, because the Bighorn's span is the
+ * tighter of the two containing it — and an unnamed creek off the Bighorn also answers Bighorn
+ * River, because that is the nearest thing the table can say about it.
+ *
+ * A linear scan of ~540 spans per click, which is nothing against the tile query that produced the
+ * click. It reads the same array the panel and the search box already hold, rather than another
+ * index that could disagree with them.
+ */
+export function nameAt(riverIndex) {
+  if (names == null || !Number.isFinite(riverIndex)) return null;
+  return names.bySize.find(r => r.lo <= riverIndex && riverIndex <= r.hi) ?? null;
+}
+
 /** What compileLayers() takes to paint the mode, or null while there is nothing to paint with. */
 export const namesStyle = () =>
-  names && {color: names.color, named: names.named, scale: NAMED_WIDTH_SCALE};
+  names && {color: colorExpr(), named: names.named, scale: NAMED_WIDTH_SCALE};
